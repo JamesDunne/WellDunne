@@ -1,0 +1,222 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ output extension=".generated.cs" #><#
+    // Max number of parameters:
+    const int max = 8;
+#>
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace System
+{
+#if NET35
+<#  for (int n = 5; n <= max; ++n)
+    {
+#>
+    public delegate TResult Func<<#= Tlist(n) #>, TResult>(<#= Targlist(n) #>);
+<#  }
+#>
+#endif
+
+<#  for (int n = 1; n <= max; ++n)
+    {
+#>
+    /// <summary>
+    /// Memoizes the result of a function per each set of parameter values.
+    /// </summary>
+    /// <remarks>
+    /// Not thread safe. Do not access concurrently from multiple threads!
+    /// </remarks>
+<#      for (int i = 1; i <= n; ++i)
+        {
+#>
+    /// <typeparam name="T<#= i #>"></typeparam>
+<#      }
+#>
+    /// <typeparam name="TResult"></typeparam>
+    public sealed class Memoizer<<#= Tlist(n) #>, TResult>
+    {
+        private struct Key : IEqualityComparer<Key>
+        {
+<#      for (int i = 1; i <= n; ++i)
+        {
+#>
+            public readonly T<#= i #> _t<#= i #>;
+<#      }
+#>
+
+            public Key(<#= Targlist(n) #>)
+            {
+<#      for (int i = 1; i <= n; ++i)
+        {
+#>
+                _t<#= i #> = t<#= i #>;
+<#      }
+#>
+            }
+
+            public bool Equals(Key x, Key y)
+            {
+<#      for (int i = 1; i <= n; ++i)
+        {
+#>
+                if (!EqualityComparer<T<#= i #>>.Default.Equals(x._t<#= i #>, y._t<#= i #>)) return false;
+<#      }
+#>
+                return true;
+            }
+
+            public int GetHashCode(Key obj)
+            {
+                unchecked
+                {
+                    int h = -1291968577;
+<#      for (int i = 1; i <= n; ++i)
+        {
+#>
+                    h = (-1521134295 * h) + EqualityComparer<T<#= i #>>.Default.GetHashCode(this._t<#= i #>);
+<#      }
+#>
+                    return h;
+                }
+            }
+        }
+
+        private readonly Func<<#= Tlist(n) #>, TResult> _func;
+        private Dictionary<Key, TResult> _values;
+
+        /// <summary>
+        /// Creates a memoizer to cache function results per distinct parameter collection.
+        /// </summary>
+        public Memoizer(Func<<#= Tlist(n) #>, TResult> func)
+        {
+            if (func == null) throw new ArgumentNullException("func");
+
+            this._func = func;
+            this._values = null;
+        }
+
+        /// <summary>
+        /// Invokes the function with the parameter values or reuses the result from a previous invocation with the same parameter values.
+        /// </summary>
+<#      for (int i = 1; i <= n; ++i)
+        {
+#>
+        /// <param name="t<#= i #>"></param>
+<#      }
+#>
+        /// <returns></returns>
+        public TResult Invoke(<#= Targlist(n) #>)
+        {
+            TResult val;
+
+            // Construct a key for look-up:
+            Key key = new Key(<#= Texplist(n) #>);
+
+            // Try to get a memoized value:
+            if (_values == null)
+                _values = new Dictionary<Key, TResult>();
+            else if (_values.TryGetValue(key, out val))
+                return val;
+
+            // Add the value to the look-up:
+            val = _func(<#= Texplist(n) #>);
+            _values.Add(key, val);
+            return val;
+        }
+
+        /// <summary>
+        /// Clears the last computed value for the given parameter values.
+        /// </summary>
+        public void Clear(<#= Targlist(n) #>)
+        {
+            if (_values == null) return;
+
+            // Construct a key for look-up:
+            Key key = new Key(<#= Texplist(n) #>);
+
+            _values.Remove(key);
+        }
+
+        /// <summary>
+        /// Sets a specific value to be returned for the given parameter values.
+        /// </summary>
+        public TResult Override(TResult newValue, <#= Targlist(n) #>)
+        {
+            // Construct a key for look-up:
+            Key key = new Key(<#= Texplist(n) #>);
+
+            // Create the dictionary if it does not exist yet:
+            if (_values == null)
+                _values = new Dictionary<Key, TResult>();
+
+            _values[key] = newValue;
+
+            return newValue;
+        }
+
+        /// <summary>
+        /// Invokes the function with the parameter values or reuses the result from a previous invocation with the same parameter values.
+        /// </summary>
+<#      for (int i = 1; i <= n; ++i)
+        {
+#>
+        /// <param name="t<#= i #>"></param>
+<#      }
+#>
+        /// <returns></returns>
+        public TResult this[<#= Targlist(n) #>]
+        {
+            get
+            {
+                return Invoke(<#= Texplist(n) #>);
+            }
+            set
+            {
+                Override(value, <#= Texplist(n) #>);
+            }
+        }
+    }
+
+<#  }
+#>
+
+    public static class Function
+    {
+<#  for (int n = 1; n <= max; ++n)
+    {
+#>
+        public static Memoizer<<#= Tlist(n) #>, TResult> Memoize<<#= Tlist(n) #>, TResult>(Func<<#= Tlist(n) #>, TResult> func)
+        {
+            return new Memoizer<<#= Tlist(n) #>, TResult>(func);
+        }
+
+<#  }
+#>
+    }
+}<#+
+    // helper methods
+
+    static string Tlist(int n, string format)
+    {
+        return String.Join(", ", Enumerable.Range(1, n).Select(i => String.Format(format, i)));
+    }
+
+    static string Tlist(int n)
+    {
+        return Tlist(n, "T{0}");
+    }
+
+    static string Targlist(int n)
+    {
+        return Tlist(n, "T{0} t{0}");
+    }
+
+    static string Texplist(int n)
+    {
+        return Tlist(n, "t{0}");
+    }
+#>

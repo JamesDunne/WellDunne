@@ -1,0 +1,101 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{08ADEEC4-9E9D-495F-9ACC-8ACD23B14438}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>WellDunne</RootNamespace>
+    <AssemblyName>WellDunne</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;NET35</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\References\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Asynchrony\AsyncContext.cs" />
+    <Compile Include="Data\AutoDataRecord.cs" />
+    <Compile Include="Data\ReadResultDelegate.cs" />
+    <Compile Include="Data\SqlAsyncCommand.cs" />
+    <Compile Include="Comparers\CollectionComparer.cs" />
+    <Compile Include="Concurrency\ProducerConsumerQueue.cs" />
+    <Compile Include="Concurrency\RateLimitedRequestSubmitter.cs" />
+    <Compile Include="Concurrency\ThreadSafeDictionary.cs" />
+    <Compile Include="Data\SqlAsyncConnectionString.cs" />
+    <Compile Include="Data\SqlSyncCommand.cs" />
+    <Compile Include="DateTimes\DateTimeZone.cs" />
+    <Compile Include="Debugging\DebugTextWriter.cs" />
+    <Compile Include="Encoding\UTF8.cs" />
+    <Compile Include="Extensions\AttributeExtensions.cs" />
+    <Compile Include="Extensions\DateTimeExtensions.cs" />
+    <Compile Include="Extensions\DictionaryExtensions.cs" />
+    <Compile Include="Extensions\IDataReaderExtensions.cs" />
+    <Compile Include="Extensions\ListExtensions.cs" />
+    <Compile Include="Extensions\NameValueCollectionExtensions.cs" />
+    <Compile Include="Extensions\ObjectExtensions.cs" />
+    <Compile Include="Extensions\ReflectionExtensions.cs" />
+    <Compile Include="Extensions\StringBuilderFormatExtensions.cs" />
+    <Compile Include="Extensions\StringExtensions.cs" />
+    <Compile Include="Extensions\StringParseExtensions.cs" />
+    <Compile Include="Formatting\CodeWriterBase.cs" />
+    <Compile Include="Functional\Either.cs" />
+    <Compile Include="Functional\Maybe.cs" />
+    <Compile Include="Functional\Memoizer.generated.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Memoizer.tt</DependentUpon>
+    </Compile>
+    <Compile Include="JSON\JSON.cs" />
+    <Compile Include="Patterns\Resource.cs" />
+    <Compile Include="Patterns\Thunk.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Standards\ISO8601DateTime.cs" />
+    <Compile Include="Standards\ISO8601TimeSpan.cs" />
+    <Compile Include="Standards\RFC2445RRule.cs" />
+    <Compile Include="Standards\RFC3339DateTime.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Functional\Memoizer.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>Memoizer.generated.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
