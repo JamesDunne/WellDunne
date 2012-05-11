@@ -6,6 +6,8 @@
 
 // Uncomment to use HTTP Basic authentication
 //#define UseBasicAuth
+// Allow JSONP requests
+#define JSONP
 
 using System;
 using System.Collections;
@@ -91,6 +93,7 @@ Query filters (order matters):
             rsp.StatusCode = result.statusCode;
 
             // JSONP support here:
+#if JSONP
             string callback = req.QueryString["callback"];
             if (callback != null)
             {
@@ -108,11 +111,15 @@ Query filters (order matters):
             }
             else
             {
+#endif
                 // Normal JSON data:
                 rsp.ContentType = "application/json";
+#if JSONP
             }
 
         output:
+#endif
+
             try
             {
                 // Serialize the result object directly to the response stream:
@@ -123,8 +130,10 @@ Query filters (order matters):
                 json.Serialize(jrsp, formatException(ex));
             }
 
+#if JSONP
             // Close the callback expression for JSONP:
             if (callback != null) rsp.Write(");");
+#endif
 
             // Dispose resources that were left open for streaming JSON serialization:
             foreach (IDisposable d in disposables)
