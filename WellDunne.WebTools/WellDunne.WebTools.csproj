@@ -62,7 +62,9 @@
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Content Include="data.ashx" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\WellDunne.Web\WellDunne.Web.csproj">
       <Project>{59F1DB36-66D9-416B-A032-64E8722B77FD}</Project>
