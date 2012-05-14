@@ -37,12 +37,19 @@ NOTE: Only GET and POST verbs are supported due to default limitations of IIS an
 
 Routes:
   * GET  /                      lists all entity names supported
-  * GET  /entity                lists all records
-  * POST /entity                inserts a record
+  * GET  /entity                lists all records (queried by $filter)
   * GET  /entity(id)            gets one record by id
+
+  * POST /entity
+ or POST /entity/insert         inserts a set of records
+
+  * POST /entity/update         updates a set of records (queried by $filter)
+  * POST /entity/delete         deletes a set of records (queried by $filter)
+
   * POST /entity(id)
- or POST /entity(id)/update     updates a record by id
-  * POST /entity(id)/delete     deletes a record by id
+ or POST /entity(id)/update     updates a single record by id
+
+  * POST /entity(id)/delete     deletes a single record by id
 
 Query filters (order matters):
   * GET  /entity
@@ -264,128 +271,12 @@ Query filters (order matters):
                     if (id != null)
                     {
                         // GET /{entity}(id)
-                        object ent = db.GetByID(id);
-                        if (ent == null) return new JsonResult(404, "Could not find record by id");
-
-                        return new JsonResult((object)ent.AsArrayOrEmpty());
+                        return getEntityByID(db, req, id);
                     }
                     else
                     {
                         // GET /{entity}
-
-                        // TODO(jsd): Add more querying support on `IQueryable`.
-                        IQueryable query = db.Query();
-                        int take = 1000;
-
-                        var q = req.QueryString;
-                        // Process query-string filters in order: (e.g. $skip before $top)
-                        for (int i = 0; i < req.QueryString.Count; ++i)
-                        {
-                            string qkey = q.Keys[i];
-                            string qvalue = q[i];
-
-                            // All filters start with '$':
-                            if (qkey == null) continue;
-                            if (qkey[0] != '$') continue;
-
-                            string filter = qkey.Substring(1);
-
-                            // Apply the filter operator:
-                            if (filter.CaseInsensitiveTrimmedEquals("filter"))
-                            {
-                                // TODO(jsd): This regex works only for simple `a op b` binary expression comparisons.
-                                var match = System.Text.RegularExpressions.Regex.Match(
-                                    qvalue,
-                                    @"^([_a-zA-Z][_a-zA-Z0-9]*)\s*(eq|ne|lt|le|gt|ge|like)\s*('.*'|[0-9]+(?:\.?[0-9]+)?)$"
-                                );
-                                if (!match.Success) return new JsonResult(400, String.Format("Bad filter expression `{0}`", qvalue));
-
-                                // NOTE(jsd): Apparently Groups[0] is the entire match so the capture groups start at [1].
-                                string propertyName = match.Groups[1].Value;
-                                string op = match.Groups[2].Value;
-                                string comparand = match.Groups[3].Value;
-
-                                // Unescape the string:
-                                if (comparand[0] == '\'')
-                                {
-                                    if (comparand[comparand.Length - 1] != '\'') return new JsonResult(400, "Invalid string literal");
-
-                                    StringBuilder sb = new StringBuilder(comparand.Length);
-                                    for (int j = 1; j < comparand.Length - 1; ++j)
-                                    {
-                                        if (comparand[j] == '\\')
-                                        {
-                                            if (++j >= comparand.Length - 1) return new JsonResult(400, "Non-terminated string escape sequence");
-                                            switch (comparand[j])
-                                            {
-                                                case '\\': sb.Append('\\'); break;
-                                                case 'n': sb.Append('\n'); break;
-                                                case 'r': sb.Append('\r'); break;
-                                                case 't': sb.Append('\t'); break;
-                                                case '\'': sb.Append('\''); break;
-                                                case '\"': sb.Append('\"'); break;
-                                                default: return new JsonResult(400, String.Format("Unrecognized string escape sequence '\\{0}' at position {1}", comparand[j], j));
-                                            }
-                                        }
-                                        else sb.Append(comparand[j]);
-                                    }
-
-                                    comparand = sb.ToString();
-                                }
-
-                                // NOTE(jsd): comparand is always a string type here but for a literal string value it must be a quoted string literal.
-
-                                // Translate the two-character operator shorthand:
-                                Extensions.BinaryOperator binop;
-                                switch (op)
-                                {
-                                    case "eq": binop = Extensions.BinaryOperator.Equal; break;
-                                    case "ne": binop = Extensions.BinaryOperator.NotEqual; break;
-                                    case "lt": binop = Extensions.BinaryOperator.LessThan; break;
-                                    case "le": binop = Extensions.BinaryOperator.LessThanOrEqual; break;
-                                    case "gt": binop = Extensions.BinaryOperator.GreaterThan; break;
-                                    case "ge": binop = Extensions.BinaryOperator.GreaterThanOrEqual; break;
-                                    case "like": binop = Extensions.BinaryOperator.SqlLike; break;
-                                    default: return new JsonResult(400, String.Format("Unknown comparison operator '{0}'", op));
-                                }
-
-                                query = query.FilterByComparison(
-                                    binop,
-                                    propertyName,
-                                    (type) => System.ComponentModel.TypeDescriptor.GetConverter(type).ConvertFromInvariantString(comparand)
-                                );
-                            }
-                            else if (filter.CaseInsensitiveTrimmedEquals("skip"))
-                            {
-                                if (qvalue == null) continue;
-                                int value;
-                                if (!Int32.TryParse(qvalue, out value))
-                                    continue;
-
-                                query = query.Skip(value);
-                            }
-                            else if (filter.CaseInsensitiveTrimmedEquals("top"))
-                            {
-                                if (qvalue == null) continue;
-                                int value;
-                                if (!Int32.TryParse(qvalue, out value))
-                                    continue;
-
-                                // There can be only one "Take":
-                                take = value;
-                            }
-                            else
-                            {
-                                return new JsonResult(400, String.Format("Unknown filter name '{0}'", filter));
-                            }
-                        }
-
-                        // Force a max # of records to retrieve (negative values disable):
-                        if (take >= 0)
-                            query = query.Take(take);
-
-                        // Must complete execution here for exception handling purposes:
-                        return new JsonResult((object)query.Cast<object>().ToList(take));
+                        return getEntities(db, req);
                     }
                 }
                 else
@@ -395,44 +286,12 @@ Query filters (order matters):
                     if (id != null)
                     {
                         // POST /{entity}(id)
-
-                        // UPDATE:
-                        var ent = db.UpdateByID(id, req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
-                        if (ent == null) return new JsonResult(404, "Record to be updated could not be found by id");
-
-                        object meta;
-                        if (doCommit(req))
-                        {
-                            db.Submit();
-                            meta = new { committed = true };
-                        }
-                        else
-                        {
-                            meta = new { committed = false };
-                        }
-
-                        return new JsonResult((object)ent.AsArrayOrEmpty(), (object)meta);
+                        return updateByID(db, req, id);
                     }
                     else
                     {
                         // POST /{entity}
-
-                        // INSERT:
-                        object newent = db.Insert(req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
-                        if (newent == null) return new JsonResult(400, "No data provided to insert");
-
-                        object meta;
-                        if (doCommit(req))
-                        {
-                            db.Submit();
-                            meta = new { committed = true };
-                        }
-                        else
-                        {
-                            meta = new { committed = false };
-                        }
-
-                        return new JsonResult((object)newent.AsArrayOrEmpty(), (object)meta);
+                        return insertEntities(db, req);
                     }
                 }
             }
@@ -444,55 +303,293 @@ Query filters (order matters):
                 if (!req.HttpMethod.CaseInsensitiveTrimmedEquals("GET"))
                 {
                     // POST /{entity}(id?)/{action}
-
                     if (id != null)
                     {
                         // POST /{entity}(id)/{action}
-
                         if (action.CaseInsensitiveTrimmedEquals("update"))
                         {
                             // POST /{entity}(id)/update
-                            var ent = db.UpdateByID(id, req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
-                            if (ent == null) return new JsonResult(404, "Record to be updated could not be found by id");
-
-                            object meta;
-                            if (doCommit(req))
-                            {
-                                db.Submit();
-                                meta = new { committed = true };
-                            }
-                            else
-                            {
-                                meta = new { committed = false };
-                            }
-
-                            return new JsonResult((object)ent.AsArrayOrEmpty(), (object)meta);
+                            return updateByID(db, req, id);
                         }
                         else if (action.CaseInsensitiveTrimmedEquals("delete"))
                         {
                             // POST /{entity}(id)/delete
-
-                            object ent = db.DeleteByID(id);
-                            if (ent == null) return new JsonResult(404, "Record to be deleted could not be found by id");
-
-                            object meta;
-                            if (doCommit(req))
-                            {
-                                db.Submit();
-                                meta = new { committed = true };
-                            }
-                            else
-                            {
-                                meta = new { committed = false };
-                            }
-
-                            return new JsonResult((object)ent.AsArrayOrEmpty(), (object)meta);
+                            return deleteByID(db, req, id);
+                        }
+                    }
+                    else
+                    {
+                        // POST /{entity}/{action}
+                        if (action.CaseInsensitiveTrimmedEquals("insert"))
+                        {
+                            // POST /{entity}/insert
+                            return insertEntities(db, req);
+                        }
+                        else if (action.CaseInsensitiveTrimmedEquals("update"))
+                        {
+                            // POST /{entity}/update
+                            return updateByQuery(db, req);
+                        }
+                        else if (action.CaseInsensitiveTrimmedEquals("delete"))
+                        {
+                            // POST /{entity}/delete
+                            return deleteByQuery(db, req);
                         }
                     }
                 }
             }
 
             return new JsonResult(400, "Unknown route");
+        }
+
+        private static JsonResult getEntityByID(ISimpleDataProvider db, HttpRequest req, string id)
+        {
+            object ent = db.GetByID(id);
+            if (ent == null) return new JsonResult(404, "Could not find record by id");
+
+            return new JsonResult((object)ent.AsArrayOrEmpty());
+        }
+
+        private static Either<JsonResult, IQueryable> buildQuery(ISimpleDataProvider db, HttpRequest req)
+        {
+            // TODO(jsd): Add more querying support on `IQueryable`.
+            IQueryable query = db.Query();
+            int take = 1000;
+
+            var q = req.QueryString;
+            // Process query-string filters in order: (e.g. $skip before $top)
+            for (int i = 0; i < q.Count; ++i)
+            {
+                string qkey = q.Keys[i];
+                string qvalue = q[i];
+
+                // All filters start with '$':
+                if (qkey == null) continue;
+                if (qkey[0] != '$') continue;
+
+                string filter = qkey.Substring(1);
+
+                // Apply the filter operator:
+                if (filter.CaseInsensitiveTrimmedEquals("filter"))
+                {
+                    // TODO(jsd): This regex works only for simple `a op b` binary expression comparisons.
+                    var match = System.Text.RegularExpressions.Regex.Match(
+                        qvalue,
+                        @"^([_a-zA-Z][_a-zA-Z0-9]*)\s*(eq|ne|lt|le|gt|ge|like)\s*('.*'|[0-9]+(?:\.?[0-9]+)?)$"
+                    );
+                    if (!match.Success) return new JsonResult(400, String.Format("Bad filter expression `{0}`", qvalue));
+
+                    // NOTE(jsd): Apparently Groups[0] is the entire match so the capture groups start at [1].
+                    string propertyName = match.Groups[1].Value;
+                    string op = match.Groups[2].Value;
+                    string comparand = match.Groups[3].Value;
+
+                    // Unescape the string:
+                    if (comparand[0] == '\'')
+                    {
+                        if (comparand[comparand.Length - 1] != '\'') return new JsonResult(400, "Invalid string literal");
+
+                        StringBuilder sb = new StringBuilder(comparand.Length);
+                        for (int j = 1; j < comparand.Length - 1; ++j)
+                        {
+                            if (comparand[j] == '\\')
+                            {
+                                if (++j >= comparand.Length - 1) return new JsonResult(400, "Non-terminated string escape sequence");
+                                switch (comparand[j])
+                                {
+                                    case '\\': sb.Append('\\'); break;
+                                    case 'n': sb.Append('\n'); break;
+                                    case 'r': sb.Append('\r'); break;
+                                    case 't': sb.Append('\t'); break;
+                                    case '\'': sb.Append('\''); break;
+                                    case '\"': sb.Append('\"'); break;
+                                    default: return new JsonResult(400, String.Format("Unrecognized string escape sequence '\\{0}' at position {1}", comparand[j], j));
+                                }
+                            }
+                            else sb.Append(comparand[j]);
+                        }
+
+                        comparand = sb.ToString();
+                    }
+
+                    // NOTE(jsd): comparand is always a string type here but for a literal string value it must be a quoted string literal.
+
+                    // Translate the two-character operator shorthand:
+                    Extensions.BinaryOperator binop;
+                    switch (op)
+                    {
+                        case "eq": binop = Extensions.BinaryOperator.Equal; break;
+                        case "ne": binop = Extensions.BinaryOperator.NotEqual; break;
+                        case "lt": binop = Extensions.BinaryOperator.LessThan; break;
+                        case "le": binop = Extensions.BinaryOperator.LessThanOrEqual; break;
+                        case "gt": binop = Extensions.BinaryOperator.GreaterThan; break;
+                        case "ge": binop = Extensions.BinaryOperator.GreaterThanOrEqual; break;
+                        case "like": binop = Extensions.BinaryOperator.SqlLike; break;
+                        default: return new JsonResult(400, String.Format("Unknown comparison operator '{0}'", op));
+                    }
+
+                    query = query.FilterByComparison(
+                        binop,
+                        propertyName,
+                        (type) => System.ComponentModel.TypeDescriptor.GetConverter(type).ConvertFromInvariantString(comparand)
+                    );
+                }
+                else if (filter.CaseInsensitiveTrimmedEquals("skip"))
+                {
+                    if (qvalue == null) continue;
+                    int value;
+                    if (!Int32.TryParse(qvalue, out value))
+                        continue;
+
+                    query = query.Skip(value);
+                }
+                else if (filter.CaseInsensitiveTrimmedEquals("top"))
+                {
+                    if (qvalue == null) continue;
+                    int value;
+                    if (!Int32.TryParse(qvalue, out value))
+                        continue;
+
+                    // There can be only one "Take":
+                    take = value;
+                }
+                else
+                {
+                    return new JsonResult(400, String.Format("Unknown filter name '{0}'", filter));
+                }
+            }
+
+            // Force a max # of records to retrieve (negative values disable):
+            if (take >= 0)
+                query = query.Take(take);
+
+            return new Either<JsonResult, IQueryable>(query);
+        }
+
+        private static JsonResult getEntities(ISimpleDataProvider db, HttpRequest req)
+        {
+            return buildQuery(db, req).Collapse(
+                jr => jr,
+                // Must complete execution here for exception handling purposes:
+                query => new JsonResult((object)query.Cast<object>().ToList())
+            );
+        }
+
+        private static JsonResult updateByID(ISimpleDataProvider db, HttpRequest req, string id)
+        {
+            // UPDATE:
+            var ent = db.UpdateByID(id, req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
+            if (ent == null) return new JsonResult(404, "Record to be updated could not be found by id");
+
+            object meta;
+            if (doCommit(req))
+            {
+                db.Submit();
+                meta = new { committed = true };
+            }
+            else
+            {
+                meta = new { committed = false };
+            }
+
+            return new JsonResult((object)ent.AsArrayOrEmpty(), (object)meta);
+        }
+
+        private static JsonResult updateByQuery(ISimpleDataProvider db, HttpRequest req)
+        {
+            return buildQuery(db, req).Collapse(
+                jr => jr,
+                query =>
+                {
+                    var updated = new ArrayList();
+                    foreach (object ent in query)
+                        updated.Add(ent);
+
+                    // Update the retrieved entities with new values from the JSON body:
+                    db.UpdateList(updated, req.InputStream, req.ContentEncoding);
+
+                    object meta;
+                    if (doCommit(req))
+                    {
+                        db.Submit();
+                        meta = new { committed = true };
+                    }
+                    else
+                    {
+                        meta = new { committed = false };
+                    }
+
+                    return new JsonResult((object)updated, (object)meta);
+                }
+            );
+        }
+
+        private static JsonResult deleteByQuery(ISimpleDataProvider db, HttpRequest req)
+        {
+            return buildQuery(db, req).Collapse(
+                jr => jr,
+                query =>
+                {
+                    var deleted = new ArrayList();
+                    foreach (object ent in query)
+                        deleted.Add(ent);
+
+                    // Update the retrieved entities with new values from the JSON body:
+                    db.DeleteList(deleted);
+
+                    object meta;
+                    if (doCommit(req))
+                    {
+                        db.Submit();
+                        meta = new { committed = true };
+                    }
+                    else
+                    {
+                        meta = new { committed = false };
+                    }
+
+                    return new JsonResult((object)deleted, (object)meta);
+                }
+            );
+        }
+
+        private static JsonResult insertEntities(ISimpleDataProvider db, HttpRequest req)
+        {
+            // INSERT:
+            object newent = db.Insert(req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
+            if (newent == null) return new JsonResult(400, "No data provided to insert");
+
+            object meta;
+            if (doCommit(req))
+            {
+                db.Submit();
+                meta = new { committed = true };
+            }
+            else
+            {
+                meta = new { committed = false };
+            }
+
+            return new JsonResult((object)newent.AsArrayOrEmpty(), (object)meta);
+        }
+
+        private static JsonResult deleteByID(ISimpleDataProvider db, HttpRequest req, string id)
+        {
+            object ent = db.DeleteByID(id);
+            if (ent == null) return new JsonResult(404, "Record to be deleted could not be found by id");
+
+            object meta;
+            if (doCommit(req))
+            {
+                db.Submit();
+                meta = new { committed = true };
+            }
+            else
+            {
+                meta = new { committed = false };
+            }
+
+            return new JsonResult((object)ent.AsArrayOrEmpty(), (object)meta);
         }
 
         #region Utility and formatting methods
@@ -648,6 +745,8 @@ Query filters (order matters):
         object Insert(System.IO.Stream inputStream, Encoding encoding);
         object UpdateByID(string id, System.IO.Stream inputStream, Encoding encoding);
         object DeleteByID(string id);
+        void UpdateList(ArrayList entities, System.IO.Stream inputStream, Encoding encoding);
+        void DeleteList(ArrayList entities);
         void Submit();
     }
 
@@ -875,6 +974,32 @@ Query filters (order matters):
             m_Delete(ent);
 
             return ent;
+        }
+
+        public void UpdateList(ArrayList entities, System.IO.Stream inputStream, Encoding encoding)
+        {
+            // Deserialize the POST body JSON onto the existing set of records, updating by position:
+            using (inputStream)
+            using (var tr = new System.IO.StreamReader(inputStream, encoding))
+            using (var jreq = new Newtonsoft.Json.JsonTextReader(tr))
+            {
+                var en = entities.GetEnumerator();
+                if (jreq.Read() && jreq.TokenType != Newtonsoft.Json.JsonToken.StartArray)
+                    throw new JsonException(400, String.Format("Expected start of JSON array in POST body at Line {0} Position {1}", jreq.LineNumber, jreq.LinePosition));
+                // Extra records in the POST body are ignored.
+                while (en.MoveNext() & jreq.Read())
+                {
+                    if (jreq.TokenType == Newtonsoft.Json.JsonToken.EndArray) break;
+                    var ent = en.Current;
+                    json.Populate(jreq, ent);
+                }
+            }
+        }
+
+        public void DeleteList(ArrayList entities)
+        {
+            foreach (object ent in entities)
+                m_Delete((T)ent);
         }
 
         public void Submit()
