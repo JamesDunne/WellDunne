@@ -970,7 +970,7 @@ Query filters (order matters):
             T ent = getByID(id);
             if (ent == null) return null;
 
-            // Mark it for deletion and submit changes:
+            // Mark it for deletion:
             m_Delete(ent);
 
             return ent;
@@ -991,6 +991,8 @@ Query filters (order matters):
                 {
                     if (jreq.TokenType == Newtonsoft.Json.JsonToken.EndArray) break;
                     var ent = en.Current;
+
+                    // Populate the current JSON object onto the existing entity for update:
                     json.Populate(jreq, ent);
                 }
             }
@@ -998,6 +1000,7 @@ Query filters (order matters):
 
         public void DeleteList(ArrayList entities)
         {
+            // Mark all entities for deletion:
             foreach (object ent in entities)
                 m_Delete((T)ent);
         }
