@@ -25,6 +25,9 @@ namespace WellDunne.WebTools
     /// </summary>
     public class DataServiceProvider : IHttpHandler
     {
+        private const string httpBasicAuthUsername = "admin";
+        private const string httpBasicAuthPassword = "admin";
+
         private const string helpText =
 @"RESTful data web service tool with basic CRUD operation support and limited querying ability.
 James S. Dunne
@@ -178,8 +181,7 @@ Query filters (order matters):
                 if (auth == null) return new JsonResult(401, "Unauthorized");
                 if (!auth.StartsWith("Basic ")) return new JsonResult(401, "Unauthorized");
                 string b64up = auth.Substring(6);
-                // NOTE(jsd): Enter your username:password here for basic authorization.
-                if (b64up != Convert.ToBase64String(Encoding.ASCII.GetBytes("admin:admin"))) return new JsonResult(401, "Unauthorized");
+                if (b64up != Convert.ToBase64String(Encoding.ASCII.GetBytes(httpBasicAuthUsername + ":" + httpBasicAuthPassword))) return new JsonResult(401, "Unauthorized");
 #endif
 
                 return execute(req, disposables);
