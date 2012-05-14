@@ -25,8 +25,10 @@ namespace WellDunne.WebTools
     /// </summary>
     public class DataServiceProvider : IHttpHandler
     {
+#if UseBasicAuth
         private const string httpBasicAuthUsername = "admin";
         private const string httpBasicAuthPassword = "admin";
+#endif
 
         private const string helpText =
 @"RESTful data web service tool with basic CRUD operation support and limited querying ability.
@@ -358,106 +360,109 @@ Query filters (order matters):
             IQueryable query = db.Query();
             int take = 1000;
 
-            var q = req.QueryString;
             // Process query-string filters in order: (e.g. $skip before $top)
+            var q = req.QueryString;
             for (int i = 0; i < q.Count; ++i)
             {
                 string qkey = q.Keys[i];
-                string qvalue = q[i];
-
-                // All filters start with '$':
-                if (qkey == null) continue;
-                if (qkey[0] != '$') continue;
-
-                string filter = qkey.Substring(1);
-
-                // Apply the filter operator:
-                if (filter.CaseInsensitiveTrimmedEquals("filter"))
+                // NOTE(jsd): Unfortunately, ASP.NET unifies duplicate keys into a single key and gives the values in order without respect
+                // to keys that might come in between duplicates.
+                foreach (string qvalue in q.GetValues(i))
                 {
-                    // TODO(jsd): This regex works only for simple `a op b` binary expression comparisons.
-                    var match = System.Text.RegularExpressions.Regex.Match(
-                        qvalue,
-                        @"^([_a-zA-Z][_a-zA-Z0-9]*)\s*(eq|ne|lt|le|gt|ge|like)\s*('.*'|[0-9]+(?:\.?[0-9]+)?)$"
-                    );
-                    if (!match.Success) return new JsonResult(400, String.Format("Bad filter expression `{0}`", qvalue));
+                    // All filters start with '$':
+                    if (qkey == null) continue;
+                    if (qkey[0] != '$') continue;
 
-                    // NOTE(jsd): Apparently Groups[0] is the entire match so the capture groups start at [1].
-                    string propertyName = match.Groups[1].Value;
-                    string op = match.Groups[2].Value;
-                    string comparand = match.Groups[3].Value;
+                    string filter = qkey.Substring(1);
 
-                    // Unescape the string:
-                    if (comparand[0] == '\'')
+                    // Apply the filter operator:
+                    if (filter.CaseInsensitiveTrimmedEquals("filter"))
                     {
-                        if (comparand[comparand.Length - 1] != '\'') return new JsonResult(400, "Invalid string literal");
+                        // TODO(jsd): This regex works only for simple `a op b` binary expression comparisons.
+                        var match = System.Text.RegularExpressions.Regex.Match(
+                            qvalue,
+                            @"^([_a-zA-Z][_a-zA-Z0-9]*)\s*(eq|ne|lt|le|gt|ge|like)\s*('.*'|[0-9]+(?:\.?[0-9]+)?)$"
+                        );
+                        if (!match.Success) return new JsonResult(400, String.Format("Bad filter expression `{0}`", qvalue));
 
-                        StringBuilder sb = new StringBuilder(comparand.Length);
-                        for (int j = 1; j < comparand.Length - 1; ++j)
+                        // NOTE(jsd): Apparently Groups[0] is the entire match so the capture groups start at [1].
+                        string propertyName = match.Groups[1].Value;
+                        string op = match.Groups[2].Value;
+                        string comparand = match.Groups[3].Value;
+
+                        // Unescape the string:
+                        if (comparand[0] == '\'')
                         {
-                            if (comparand[j] == '\\')
+                            if (comparand[comparand.Length - 1] != '\'') return new JsonResult(400, "Invalid string literal");
+
+                            StringBuilder sb = new StringBuilder(comparand.Length);
+                            for (int j = 1; j < comparand.Length - 1; ++j)
                             {
-                                if (++j >= comparand.Length - 1) return new JsonResult(400, "Non-terminated string escape sequence");
-                                switch (comparand[j])
+                                if (comparand[j] == '\\')
                                 {
-                                    case '\\': sb.Append('\\'); break;
-                                    case 'n': sb.Append('\n'); break;
-                                    case 'r': sb.Append('\r'); break;
-                                    case 't': sb.Append('\t'); break;
-                                    case '\'': sb.Append('\''); break;
-                                    case '\"': sb.Append('\"'); break;
-                                    default: return new JsonResult(400, String.Format("Unrecognized string escape sequence '\\{0}' at position {1}", comparand[j], j));
+                                    if (++j >= comparand.Length - 1) return new JsonResult(400, "Non-terminated string escape sequence");
+                                    switch (comparand[j])
+                                    {
+                                        case '\\': sb.Append('\\'); break;
+                                        case 'n': sb.Append('\n'); break;
+                                        case 'r': sb.Append('\r'); break;
+                                        case 't': sb.Append('\t'); break;
+                                        case '\'': sb.Append('\''); break;
+                                        case '\"': sb.Append('\"'); break;
+                                        default: return new JsonResult(400, String.Format("Unrecognized string escape sequence '\\{0}' at position {1}", comparand[j], j));
+                                    }
                                 }
+                                else sb.Append(comparand[j]);
                             }
-                            else sb.Append(comparand[j]);
+
+                            comparand = sb.ToString();
                         }
 
-                        comparand = sb.ToString();
+                        // NOTE(jsd): comparand is always a string type here but for a literal string value it must be a quoted string literal.
+
+                        // Translate the two-character operator shorthand:
+                        Extensions.BinaryOperator binop;
+                        switch (op)
+                        {
+                            case "eq": binop = Extensions.BinaryOperator.Equal; break;
+                            case "ne": binop = Extensions.BinaryOperator.NotEqual; break;
+                            case "lt": binop = Extensions.BinaryOperator.LessThan; break;
+                            case "le": binop = Extensions.BinaryOperator.LessThanOrEqual; break;
+                            case "gt": binop = Extensions.BinaryOperator.GreaterThan; break;
+                            case "ge": binop = Extensions.BinaryOperator.GreaterThanOrEqual; break;
+                            case "like": binop = Extensions.BinaryOperator.SqlLike; break;
+                            default: return new JsonResult(400, String.Format("Unknown comparison operator '{0}'", op));
+                        }
+
+                        query = query.FilterByComparison(
+                            binop,
+                            propertyName,
+                            (type) => System.ComponentModel.TypeDescriptor.GetConverter(type).ConvertFromInvariantString(comparand)
+                        );
                     }
-
-                    // NOTE(jsd): comparand is always a string type here but for a literal string value it must be a quoted string literal.
-
-                    // Translate the two-character operator shorthand:
-                    Extensions.BinaryOperator binop;
-                    switch (op)
+                    else if (filter.CaseInsensitiveTrimmedEquals("skip"))
                     {
-                        case "eq": binop = Extensions.BinaryOperator.Equal; break;
-                        case "ne": binop = Extensions.BinaryOperator.NotEqual; break;
-                        case "lt": binop = Extensions.BinaryOperator.LessThan; break;
-                        case "le": binop = Extensions.BinaryOperator.LessThanOrEqual; break;
-                        case "gt": binop = Extensions.BinaryOperator.GreaterThan; break;
-                        case "ge": binop = Extensions.BinaryOperator.GreaterThanOrEqual; break;
-                        case "like": binop = Extensions.BinaryOperator.SqlLike; break;
-                        default: return new JsonResult(400, String.Format("Unknown comparison operator '{0}'", op));
+                        if (qvalue == null) continue;
+                        int value;
+                        if (!Int32.TryParse(qvalue, out value))
+                            continue;
+
+                        query = query.Skip(value);
                     }
+                    else if (filter.CaseInsensitiveTrimmedEquals("top"))
+                    {
+                        if (qvalue == null) continue;
+                        int value;
+                        if (!Int32.TryParse(qvalue, out value))
+                            continue;
 
-                    query = query.FilterByComparison(
-                        binop,
-                        propertyName,
-                        (type) => System.ComponentModel.TypeDescriptor.GetConverter(type).ConvertFromInvariantString(comparand)
-                    );
-                }
-                else if (filter.CaseInsensitiveTrimmedEquals("skip"))
-                {
-                    if (qvalue == null) continue;
-                    int value;
-                    if (!Int32.TryParse(qvalue, out value))
-                        continue;
-
-                    query = query.Skip(value);
-                }
-                else if (filter.CaseInsensitiveTrimmedEquals("top"))
-                {
-                    if (qvalue == null) continue;
-                    int value;
-                    if (!Int32.TryParse(qvalue, out value))
-                        continue;
-
-                    // There can be only one "Take":
-                    take = value;
-                }
-                else
-                {
-                    return new JsonResult(400, String.Format("Unknown filter name '{0}'", filter));
+                        // There can be only one "Take":
+                        take = value;
+                    }
+                    else
+                    {
+                        return new JsonResult(400, String.Format("Unknown filter name '{0}'", filter));
+                    }
                 }
             }
 
@@ -558,8 +563,8 @@ Query filters (order matters):
         private static JsonResult insertEntities(ISimpleDataProvider db, HttpRequest req)
         {
             // INSERT:
-            object newent = db.Insert(req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
-            if (newent == null) return new JsonResult(400, "No data provided to insert");
+            ArrayList newents = db.InsertList(req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
+            if (newents == null) return new JsonResult(400, "No data provided to insert");
 
             object meta;
             if (doCommit(req))
@@ -572,7 +577,7 @@ Query filters (order matters):
                 meta = new { committed = false };
             }
 
-            return new JsonResult((object)newent.AsArrayOrEmpty(), (object)meta);
+            return new JsonResult((object)newents, (object)meta);
         }
 
         private static JsonResult deleteByID(ISimpleDataProvider db, HttpRequest req, string id)
@@ -744,7 +749,7 @@ Query filters (order matters):
     {
         IQueryable Query();
         object GetByID(string id);
-        object Insert(System.IO.Stream inputStream, Encoding encoding);
+        ArrayList InsertList(System.IO.Stream inputStream, Encoding encoding);
         object UpdateByID(string id, System.IO.Stream inputStream, Encoding encoding);
         object DeleteByID(string id);
         void UpdateList(ArrayList entities, System.IO.Stream inputStream, Encoding encoding);
@@ -820,6 +825,22 @@ Query filters (order matters):
             SqlLike
         }
 
+        static bool IsNullableType(Type t)
+        {
+            return t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>);
+        }
+
+        public static BinaryExpression lift(Func<Expression, Expression, BinaryExpression> compare, Expression l, Expression r)
+        {
+            // Lifts the non-nullable type to a nullable type:
+            if (IsNullableType(l.Type) && !IsNullableType(r.Type))
+                r = Expression.Convert(r, l.Type);
+            else if (!IsNullableType(l.Type) && IsNullableType(r.Type))
+                l = Expression.Convert(l, r.Type);
+
+            return compare(l, r);
+        }
+
         public static IQueryable FilterByComparison(this IQueryable source, BinaryOperator op, string propertyName, Func<Type, object> getComparand)
         {
             // Find the Property by name on the query's element type:
@@ -842,12 +863,12 @@ Query filters (order matters):
             Expression comparer;
             switch (op)
             {
-                case BinaryOperator.Equal: comparer = Expression.Equal(l, r(l.Type)); break;
-                case BinaryOperator.NotEqual: comparer = Expression.NotEqual(l, r(l.Type)); break;
-                case BinaryOperator.LessThan: comparer = Expression.LessThan(l, r(l.Type)); break;
-                case BinaryOperator.LessThanOrEqual: comparer = Expression.LessThanOrEqual(l, r(l.Type)); break;
-                case BinaryOperator.GreaterThan: comparer = Expression.GreaterThan(l, r(l.Type)); break;
-                case BinaryOperator.GreaterThanOrEqual: comparer = Expression.GreaterThanOrEqual(l, r(l.Type)); break;
+                case BinaryOperator.Equal: comparer = lift(Expression.Equal, l, r(l.Type)); break;
+                case BinaryOperator.NotEqual: comparer = lift(Expression.NotEqual, l, r(l.Type)); break;
+                case BinaryOperator.LessThan: comparer = lift(Expression.LessThan, l, r(l.Type)); break;
+                case BinaryOperator.LessThanOrEqual: comparer = lift(Expression.LessThanOrEqual, l, r(l.Type)); break;
+                case BinaryOperator.GreaterThan: comparer = lift(Expression.GreaterThan, l, r(l.Type)); break;
+                case BinaryOperator.GreaterThanOrEqual: comparer = lift(Expression.GreaterThanOrEqual, l, r(l.Type)); break;
                 case BinaryOperator.SqlLike:
                     // Convert the `l` expression to a string using `.ToString()`:
                     if (l.Type != typeof(string)) l = Expression.Call(l, "ToString", Type.EmptyTypes);
@@ -935,20 +956,41 @@ Query filters (order matters):
             throw new JsonException(500, "BUG: No delegate defined to handle GetByID");
         }
 
-        public object Insert(System.IO.Stream inputStream, Encoding encoding)
+        public ArrayList InsertList(System.IO.Stream inputStream, Encoding encoding)
         {
             T ent;
 
             using (inputStream)
             using (var tr = new System.IO.StreamReader(inputStream, encoding))
             using (var jreq = new Newtonsoft.Json.JsonTextReader(tr))
-                ent = json.Deserialize<T>(jreq);
+            {
+                if (jreq.Read() & jreq.TokenType == Newtonsoft.Json.JsonToken.StartArray)
+                {
+                    var al = new ArrayList();
+                    while (jreq.Read())
+                    {
+                        if (jreq.TokenType == Newtonsoft.Json.JsonToken.EndArray) break;
 
-            if (ent == null) return null;
+                        ent = json.Deserialize<T>(jreq);
+                        if (ent == null) return null;
 
-            m_Insert(ent);
+                        m_Insert(ent);
+                        al.Add(ent);
+                    }
+                    return al;
+                }
+                else
+                {
+                    ent = json.Deserialize<T>(jreq);
+                    if (ent == null) return null;
 
-            return ent;
+                    m_Insert(ent);
+
+                    var al = new ArrayList(1);
+                    al.Add(ent);
+                    return al;
+                }
+            }
         }
 
         public object UpdateByID(string id, System.IO.Stream inputStream, Encoding encoding)
