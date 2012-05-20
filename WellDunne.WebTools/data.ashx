@@ -4,8 +4,10 @@
 <%@ Assembly Name="System.Data.Linq, Version=3.5.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" %>
 <%@ Assembly Name="WellDunne" %>
 
-// Uncomment to use HTTP Basic authentication
-//#define UseBasicAuth
+// Uncomment to require HTTP Basic authentication
+//#define RequireAuth
+// Uncomment to require authentication to read data
+#define RequireAuthToRead
 // Allow JSONP requests
 #define JSONP
 
@@ -17,6 +19,8 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.Web;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace WellDunne.WebTools
 {
@@ -25,9 +29,13 @@ namespace WellDunne.WebTools
     /// </summary>
     public class DataServiceProvider : IHttpHandler
     {
-#if UseBasicAuth
+#if RequireAuth
         private const string httpBasicAuthUsername = "admin";
         private const string httpBasicAuthPassword = "admin";
+#if RequireAuthToRead
+        private const string httpBasicAuth_ReadOnly_Username = "guest";
+        private const string httpBasicAuth_ReadOnly_Password = "guest";
+#endif
 #endif
 
         private const string helpText =
@@ -58,9 +66,10 @@ Routes:
 
 Query filters (order matters):
   * GET  /entity
-      * $skip=n                         - Skip N rows
-      * $top=n                          - Take top N rows
-      * $filter=(name) (op) (value)     - Filter rows via simple comparison operations
+      * $skip=n                             - Skip N rows
+      * $top=n                              - Take top N rows
+      * $orderby=(name) (direction),...     - Order by column(s) in direction(s)
+      * $filter=(name) (op) (value)         - Filter rows via simple comparison operations
             name:       name that identifies the property to compare (case insensitive)
             op:         operator name
                 eq   (==): equals
@@ -93,7 +102,7 @@ Query filters (order matters):
             var result = new JsonResult((object)null);
 
             // Create a JsonTextWriter to write directly to the HTTP response stream:
-            var jrsp = new Newtonsoft.Json.JsonTextWriter(rsp.Output);
+            var jrsp = new JsonTextWriter(rsp.Output);
 
             // Keep a list of disposable resources that must be reclaimed after the response is written:
             List<IDisposable> disposables = new List<IDisposable>();
@@ -178,12 +187,54 @@ Query filters (order matters):
                 }
 
                 // Basic auth support:
-#if UseBasicAuth
+#if RequireAuth
+#if RequireAuthToRead
                 string auth = req.Headers["Authorization"];
                 if (auth == null) return new JsonResult(401, "Unauthorized");
                 if (!auth.StartsWith("Basic ")) return new JsonResult(401, "Unauthorized");
+
                 string b64up = auth.Substring(6);
-                if (b64up != Convert.ToBase64String(Encoding.ASCII.GetBytes(httpBasicAuthUsername + ":" + httpBasicAuthPassword))) return new JsonResult(401, "Unauthorized");
+                if (b64up == Convert.ToBase64String(Encoding.ASCII.GetBytes(httpBasicAuth_ReadWrite_Username + ":" + httpBasicAuth_ReadWrite_Password)))
+                {
+                    // Read/Write access.
+                    // Do nothing here to prevent access.
+                    goto authorized;
+                }
+                else if (b64up == Convert.ToBase64String(Encoding.ASCII.GetBytes(httpBasicAuth_ReadOnly_Username + ":" + httpBasicAuth_ReadOnly_Password)))
+                {
+                    // Read-only access.
+                    goto readOnly;
+                }
+                else
+                {
+                    // No access.
+                    return new JsonResult(401, "Unauthorized");
+                }
+#else
+                // Authorization is not required for read-only access:
+                string auth = req.Headers["Authorization"];
+                if (auth == null) goto readOnly;
+                if (!auth.StartsWith("Basic ")) goto readOnly;
+
+                string b64up = auth.Substring(6);
+                // Authorization is required for read-write access:
+                if (b64up == Convert.ToBase64String(Encoding.ASCII.GetBytes(httpBasicAuth_ReadWrite_Username + ":" + httpBasicAuth_ReadWrite_Password)))
+                {
+                    // Read/write is authorized.
+                    goto authorized;
+                }
+                else
+                {
+                    // Read-only mode.
+                    goto readOnly;
+                }
+#endif
+
+            readOnly:
+                if (!req.HttpMethod.CaseInsensitiveTrimmedEquals("GET"))
+                    return new JsonResult(401, "Unauthorized; read-only access");
+
+            authorized:
 #endif
 
                 return execute(req, disposables);
@@ -346,14 +397,6 @@ Query filters (order matters):
             return new JsonResult(400, "Unknown route");
         }
 
-        private static JsonResult getEntityByID(ISimpleDataProvider db, HttpRequest req, string id)
-        {
-            object ent = db.GetByID(id);
-            if (ent == null) return new JsonResult(404, "Could not find record by id");
-
-            return new JsonResult((object)ent.AsArrayOrEmpty());
-        }
-
         private static Either<JsonResult, IQueryable> buildQuery(ISimpleDataProvider db, HttpRequest req)
         {
             // TODO(jsd): Add more querying support on `IQueryable`.
@@ -362,11 +405,14 @@ Query filters (order matters):
 
             // Process query-string filters in order: (e.g. $skip before $top)
             var q = req.QueryString;
+            bool isOrdered = false;
+
             for (int i = 0; i < q.Count; ++i)
             {
                 string qkey = q.Keys[i];
+
                 // NOTE(jsd): Unfortunately, ASP.NET unifies duplicate keys into a single key and gives the values in order without respect
-                // to keys that might come in between duplicates.
+                // to keys that might come in between the duplicates.
                 foreach (string qvalue in q.GetValues(i))
                 {
                     // All filters start with '$':
@@ -381,7 +427,7 @@ Query filters (order matters):
                         // TODO(jsd): This regex works only for simple `a op b` binary expression comparisons.
                         var match = System.Text.RegularExpressions.Regex.Match(
                             qvalue,
-                            @"^([_a-zA-Z][_a-zA-Z0-9]*)\s*(eq|ne|lt|le|gt|ge|like)\s*('.*'|[0-9]+(?:\.?[0-9]+)?)$"
+                            @"^([_a-zA-Z][_a-zA-Z0-9]*)\s*(eq|ne|lt|le|gt|ge|like)\s*('.*'|[0-9]+(?:\.?[0-9]+)?|true|false|null)$"
                         );
                         if (!match.Success) return new JsonResult(400, String.Format("Bad filter expression `{0}`", qvalue));
 
@@ -390,9 +436,10 @@ Query filters (order matters):
                         string op = match.Groups[2].Value;
                         string comparand = match.Groups[3].Value;
 
-                        // Unescape the string:
-                        if (comparand[0] == '\'')
+                        if (comparand == "null") comparand = null;
+                        else if (comparand[0] == '\'')
                         {
+                            // Unescape the string:
                             if (comparand[comparand.Length - 1] != '\'') return new JsonResult(400, "Invalid string literal");
 
                             StringBuilder sb = new StringBuilder(comparand.Length);
@@ -459,6 +506,53 @@ Query filters (order matters):
                         // There can be only one "Take":
                         take = value;
                     }
+                    else if (filter.CaseInsensitiveTrimmedEquals("orderby"))
+                    {
+                        if (qvalue == null) continue;
+                        string[] exps = qvalue.Split(new char[1] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        foreach (string exp in exps)
+                        {
+                            string name;
+                            bool isAscending = true;
+
+                            // Parse the orderby expression:
+                            int spidx = exp.IndexOf(' ');
+                            if (spidx == -1) name = exp;
+                            else
+                            {
+                                name = exp.Substring(0, spidx);
+                                string tmp = exp.Substring(spidx + 1);
+                                if (tmp.CaseInsensitiveTrimmedEquals("asc"))
+                                    isAscending = true;
+                                else if (tmp.CaseInsensitiveTrimmedEquals("desc"))
+                                    isAscending = false;
+                                else
+                                    return new JsonResult(400, String.Format("Bad orderby direction '{0}'; must be either 'asc' or 'desc'", tmp));
+                            }
+
+                            if (isAscending)
+                            {
+                                if (isOrdered)
+                                    query = ((IOrderedQueryable)query).ThenBy(name);
+                                else
+                                {
+                                    query = query.OrderBy(name);
+                                    isOrdered = true;
+                                }
+                            }
+                            else
+                            {
+                                if (isOrdered)
+                                    query = ((IOrderedQueryable)query).ThenByDescending(name);
+                                else
+                                {
+                                    query = query.OrderByDescending(name);
+                                    isOrdered = true;
+                                }
+                            }
+                        }
+                    }
+                    // TODO: $select - can't create anonymous types on-the-fly to contain the projection... or can we?
                     else
                     {
                         return new JsonResult(400, String.Format("Unknown filter name '{0}'", filter));
@@ -473,13 +567,71 @@ Query filters (order matters):
             return new Either<JsonResult, IQueryable>(query);
         }
 
+        private static JsonResult getEntityByID(ISimpleDataProvider db, HttpRequest req, string id)
+        {
+            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+            object ent = db.GetByID(id);
+            sw.Stop();
+            if (ent == null) return new JsonResult(404, "Could not find record by id");
+
+            return new JsonResult((object)ent.AsArrayOrEmpty(), new JsonResultMeta
+            {
+                execMsec = sw.ElapsedMilliseconds,
+                executed = DateTimeOffset.Now,
+                server = db.ServerName,
+                database = db.DatabaseName
+            });
+        }
+
         private static JsonResult getEntities(ISimpleDataProvider db, HttpRequest req)
         {
             return buildQuery(db, req).Collapse(
                 jr => jr,
                 // Must complete execution here for exception handling purposes:
-                query => new JsonResult((object)query.Cast<object>().ToList())
+                query =>
+                {
+                    System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                    List<object> results = query.Cast<object>().ToList();
+                    sw.Stop();
+
+                    return new JsonResult((object)results, new JsonResultMeta
+                    {
+                        execMsec = sw.ElapsedMilliseconds,
+                        executed = DateTimeOffset.Now,
+                        server = db.ServerName,
+                        database = db.DatabaseName
+                    });
+                }
             );
+        }
+
+        private static JsonResultMeta submit(ISimpleDataProvider db, HttpRequest req)
+        {
+            if (doCommit(req))
+            {
+                System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                db.Submit();
+                sw.Stop();
+                return new JsonResultMeta
+                {
+                    committed = true,
+                    execMsec = sw.ElapsedMilliseconds,
+                    executed = DateTimeOffset.Now,
+                    server = db.ServerName,
+                    database = db.DatabaseName
+                };
+            }
+            else
+            {
+                return new JsonResultMeta
+                {
+                    committed = false,
+                    execMsec = 0L,
+                    executed = DateTimeOffset.Now,
+                    server = db.ServerName,
+                    database = db.DatabaseName
+                };
+            }
         }
 
         private static JsonResult updateByID(ISimpleDataProvider db, HttpRequest req, string id)
@@ -488,16 +640,7 @@ Query filters (order matters):
             var ent = db.UpdateByID(id, req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
             if (ent == null) return new JsonResult(404, "Record to be updated could not be found by id");
 
-            object meta;
-            if (doCommit(req))
-            {
-                db.Submit();
-                meta = new { committed = true };
-            }
-            else
-            {
-                meta = new { committed = false };
-            }
+            var meta = submit(db, req);
 
             return new JsonResult((object)ent.AsArrayOrEmpty(), (object)meta);
         }
@@ -515,16 +658,7 @@ Query filters (order matters):
                     // Update the retrieved entities with new values from the JSON body:
                     db.UpdateList(updated, req.InputStream, req.ContentEncoding);
 
-                    object meta;
-                    if (doCommit(req))
-                    {
-                        db.Submit();
-                        meta = new { committed = true };
-                    }
-                    else
-                    {
-                        meta = new { committed = false };
-                    }
+                    var meta = submit(db, req);
 
                     return new JsonResult((object)updated, (object)meta);
                 }
@@ -544,16 +678,7 @@ Query filters (order matters):
                     // Update the retrieved entities with new values from the JSON body:
                     db.DeleteList(deleted);
 
-                    object meta;
-                    if (doCommit(req))
-                    {
-                        db.Submit();
-                        meta = new { committed = true };
-                    }
-                    else
-                    {
-                        meta = new { committed = false };
-                    }
+                    var meta = submit(db, req);
 
                     return new JsonResult((object)deleted, (object)meta);
                 }
@@ -566,16 +691,7 @@ Query filters (order matters):
             ArrayList newents = db.InsertList(req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
             if (newents == null) return new JsonResult(400, "No data provided to insert");
 
-            object meta;
-            if (doCommit(req))
-            {
-                db.Submit();
-                meta = new { committed = true };
-            }
-            else
-            {
-                meta = new { committed = false };
-            }
+            var meta = submit(db, req);
 
             return new JsonResult((object)newents, (object)meta);
         }
@@ -585,34 +701,39 @@ Query filters (order matters):
             object ent = db.DeleteByID(id);
             if (ent == null) return new JsonResult(404, "Record to be deleted could not be found by id");
 
-            object meta;
-            if (doCommit(req))
-            {
-                db.Submit();
-                meta = new { committed = true };
-            }
-            else
-            {
-                meta = new { committed = false };
-            }
+            var meta = submit(db, req);
 
             return new JsonResult((object)ent.AsArrayOrEmpty(), (object)meta);
         }
 
         #region Utility and formatting methods
 
+        private sealed class JsonResultMeta
+        {
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public bool? committed;
+            public long execMsec;
+            public DateTimeOffset executed;
+            public string server;
+            public string database;
+        }
+
         private struct JsonResult
         {
-            [Newtonsoft.Json.JsonIgnore]
+            [JsonIgnore]
             public readonly int statusCode;
 
             // NOTE(jsd): Fields are serialized to JSON in lexical definition order.
             public readonly bool success;
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
             public readonly string message;
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
             public readonly object errors;
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
             public readonly object meta;
 
             // NOTE(jsd): `results` must be last.
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
             public readonly object results;
 
             public JsonResult(int statusCode, string failureMessage)
@@ -656,11 +777,28 @@ Query filters (order matters):
             }
         }
 
-        // Ignore null values in JSON output:
-        private static readonly Newtonsoft.Json.JsonSerializer json = Newtonsoft.Json.JsonSerializer.Create(new Newtonsoft.Json.JsonSerializerSettings
+        private sealed class IgnoreEntitySetsJsonContractResolver : DefaultContractResolver
         {
-            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
-            ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
+            protected override IList<JsonProperty> CreateProperties(Type type, MemberSerialization memberSerialization)
+            {
+                IList<JsonProperty> properties = base.CreateProperties(type, memberSerialization);
+
+                // Remove properties which have type of `System.Data.Linq.EntitySet<T>`:
+                properties = properties
+                    .Where(p => !(p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(System.Data.Linq.EntitySet<>)))
+                    .ToList();
+
+                return properties;
+            }
+        }
+
+        private static readonly JsonSerializer json = JsonSerializer.Create(new JsonSerializerSettings
+        {
+            // NOTE(jsd): Include null values in output for clarity.
+            NullValueHandling = NullValueHandling.Include,
+            ReferenceLoopHandling = ReferenceLoopHandling.Error,
+            // Ignore EntitySet<T> property types for serialization (these cause lazy data loading (slow) and circular serialization references (bad)):
+            ContractResolver = new IgnoreEntitySetsJsonContractResolver()
         });
 
         private static JsonResult sqlError(System.Data.SqlClient.SqlException sqex)
@@ -698,7 +836,7 @@ Query filters (order matters):
         private static JsonResult formatException(Exception ex)
         {
             JsonException jex;
-            Newtonsoft.Json.JsonSerializationException jsex;
+            JsonSerializationException jsex;
             System.Data.SqlClient.SqlException sqex;
 
             object innerException = null;
@@ -709,7 +847,7 @@ Query filters (order matters):
             {
                 return new JsonResult(jex.StatusCode, jex.Message);
             }
-            else if ((jsex = ex as Newtonsoft.Json.JsonSerializationException) != null)
+            else if ((jsex = ex as JsonSerializationException) != null)
             {
                 object errorData = new
                 {
@@ -755,6 +893,8 @@ Query filters (order matters):
         void UpdateList(ArrayList entities, System.IO.Stream inputStream, Encoding encoding);
         void DeleteList(ArrayList entities);
         void Submit();
+        string ServerName { get; }
+        string DatabaseName { get; }
     }
 
     /// <summary>
@@ -804,6 +944,75 @@ Query filters (order matters):
             ));
         }
 
+#if false
+        // NOTE(jsd): LINQ-to-SQL rejected my idea because "Explicit construction of entity type [type] in query is not allowed"
+        public static IQueryable Select(this IQueryable source, Type destType, params string[] names)
+        {
+            // Create the parameter to the lambda:
+            ParameterExpression prm = Expression.Parameter(source.ElementType, "_");
+            // Create the projection expression to initialize the selected members:
+            Expression projection = Expression.MemberInit(Expression.New(destType), (
+                from name in names
+                let srcProp = findPropertyByName(source.ElementType, name)
+                let dstProp = findPropertyByName(destType, name)
+                select (MemberBinding) Expression.Bind(dstProp, Expression.Property(prm, srcProp))
+            ));
+
+            return source.Provider.CreateQuery(Expression.Call(
+                typeof(Queryable),
+                "Select",
+                new Type[] { source.ElementType, source.ElementType },
+                new Expression[] { source.Expression, Expression.Lambda(projection, prm) }
+            ));
+        }
+#endif
+
+        static IOrderedQueryable ordered(IQueryable source, string method, string name)
+        {
+            PropertyInfo prop = findPropertyByName(source.ElementType, name);
+            ParameterExpression prm = Expression.Parameter(source.ElementType, "_");
+
+            return (IOrderedQueryable)source.Provider.CreateQuery(Expression.Call(
+                typeof(Queryable),
+                method,
+                new Type[] { source.ElementType, prop.PropertyType },
+                new Expression[] { source.Expression, Expression.Lambda(Expression.Property(prm, prop), prm) }
+            ));
+        }
+
+        public static IOrderedQueryable OrderBy(this IQueryable source, string name)
+        {
+            return ordered(source, "OrderBy", name);
+        }
+
+        public static IOrderedQueryable OrderByDescending(this IQueryable source, string name)
+        {
+            return ordered(source, "OrderByDescending", name);
+        }
+
+        static IOrderedQueryable thenOrdered(IOrderedQueryable source, string method, string name)
+        {
+            PropertyInfo prop = findPropertyByName(source.ElementType, name);
+            ParameterExpression prm = Expression.Parameter(source.ElementType, "_");
+
+            return (IOrderedQueryable)source.Provider.CreateQuery(Expression.Call(
+                typeof(Queryable),
+                method,
+                new Type[] { source.ElementType, prop.PropertyType },
+                new Expression[] { source.Expression, Expression.Lambda(Expression.Property(prm, prop), prm) }
+            ));
+        }
+
+        public static IOrderedQueryable ThenBy(this IOrderedQueryable source, string name)
+        {
+            return thenOrdered(source, "ThenBy", name);
+        }
+
+        public static IOrderedQueryable ThenByDescending(this IOrderedQueryable source, string name)
+        {
+            return thenOrdered(source, "ThenByDescending", name);
+        }
+
         public static IQueryable Where(this IQueryable source, Expression predicate)
         {
             return source.Provider.CreateQuery(Expression.Call(
@@ -830,7 +1039,20 @@ Query filters (order matters):
             return t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>);
         }
 
-        public static BinaryExpression lift(Func<Expression, Expression, BinaryExpression> compare, Expression l, Expression r)
+        static PropertyInfo findPropertyByName(Type type, string propertyName)
+        {
+            // Find the Property by name on the query's element type:
+            PropertyInfo prop;
+            prop = type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+            if (prop == null)
+                prop = type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (prop == null)
+                throw new ArgumentException(String.Format("Could not find property '{0}' on type '{1}'", propertyName, type.FullName), "propertyName");
+
+            return prop;
+        }
+
+        static BinaryExpression lift(Func<Expression, Expression, BinaryExpression> compare, Expression l, Expression r)
         {
             // Lifts the non-nullable type to a nullable type:
             if (IsNullableType(l.Type) && !IsNullableType(r.Type))
@@ -844,12 +1066,7 @@ Query filters (order matters):
         public static IQueryable FilterByComparison(this IQueryable source, BinaryOperator op, string propertyName, Func<Type, object> getComparand)
         {
             // Find the Property by name on the query's element type:
-            PropertyInfo prop;
-            prop = source.ElementType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-            if (prop == null)
-                prop = source.ElementType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            if (prop == null)
-                throw new ArgumentException(String.Format("Could not find property '{0}' on type '{1}'", propertyName, source.ElementType.FullName), "propertyName");
+            PropertyInfo prop = findPropertyByName(source.ElementType, propertyName);
 
             // Parameter to the lambda for Where:
             ParameterExpression prm = Expression.Parameter(source.ElementType, "_");
@@ -924,11 +1141,11 @@ Query filters (order matters):
         /// </summary>
         protected Action m_Submit;
 
-        // Ignore null values in JSON output:
-        private static readonly Newtonsoft.Json.JsonSerializer json = Newtonsoft.Json.JsonSerializer.Create(new Newtonsoft.Json.JsonSerializerSettings
+        private static readonly JsonSerializer json = JsonSerializer.Create(new JsonSerializerSettings
         {
-            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
-            ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
+            // NOTE(jsd): We need to include null values for proper deserialization from POST body
+            NullValueHandling = NullValueHandling.Include,
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore
         });
 
         public IQueryable Query() { return m_Query(); }
@@ -962,14 +1179,14 @@ Query filters (order matters):
 
             using (inputStream)
             using (var tr = new System.IO.StreamReader(inputStream, encoding))
-            using (var jreq = new Newtonsoft.Json.JsonTextReader(tr))
+            using (var jreq = new JsonTextReader(tr))
             {
-                if (jreq.Read() & jreq.TokenType == Newtonsoft.Json.JsonToken.StartArray)
+                if (jreq.Read() & jreq.TokenType == JsonToken.StartArray)
                 {
                     var al = new ArrayList();
                     while (jreq.Read())
                     {
-                        if (jreq.TokenType == Newtonsoft.Json.JsonToken.EndArray) break;
+                        if (jreq.TokenType == JsonToken.EndArray) break;
 
                         ent = json.Deserialize<T>(jreq);
                         if (ent == null) return null;
@@ -1002,7 +1219,7 @@ Query filters (order matters):
             // Deserialize the POST body JSON onto the existing record:
             using (inputStream)
             using (var tr = new System.IO.StreamReader(inputStream, encoding))
-            using (var jreq = new Newtonsoft.Json.JsonTextReader(tr))
+            using (var jreq = new JsonTextReader(tr))
                 json.Populate(jreq, ent);
 
             return ent;
@@ -1025,15 +1242,15 @@ Query filters (order matters):
             // Deserialize the POST body JSON onto the existing set of records, updating by position:
             using (inputStream)
             using (var tr = new System.IO.StreamReader(inputStream, encoding))
-            using (var jreq = new Newtonsoft.Json.JsonTextReader(tr))
+            using (var jreq = new JsonTextReader(tr))
             {
                 var en = entities.GetEnumerator();
-                if (jreq.Read() && jreq.TokenType != Newtonsoft.Json.JsonToken.StartArray)
+                if (jreq.Read() && jreq.TokenType != JsonToken.StartArray)
                     throw new JsonException(400, String.Format("Expected start of JSON array in POST body at Line {0} Position {1}", jreq.LineNumber, jreq.LinePosition));
                 // Extra records in the POST body are ignored.
                 while (en.MoveNext() & jreq.Read())
                 {
-                    if (jreq.TokenType == Newtonsoft.Json.JsonToken.EndArray) break;
+                    if (jreq.TokenType == JsonToken.EndArray) break;
                     var ent = en.Current;
 
                     // Populate the current JSON object onto the existing entity for update:
@@ -1055,8 +1272,22 @@ Query filters (order matters):
             m_Submit();
         }
 
-        protected abstract IDisposable repository { get; }
-        public void Dispose() { try { if (repository != null) repository.Dispose(); } catch { } }
+        protected abstract System.Data.Linq.DataContext repository { get; }
+        public string ServerName { get { if (repository == null) return null; else return ((System.Data.Common.DbConnection)repository.Connection).DataSource; } }
+        public string DatabaseName { get { if (repository == null) return null; else return ((System.Data.Common.DbConnection)repository.Connection).Database; } }
+
+        protected virtual IEnumerable<IDisposable> disposables { get { return Enumerable.Repeat((IDisposable)repository, 1); } }
+
+        public void Dispose()
+        {
+            var set = disposables;
+            if (set == null) return;
+            foreach (IDisposable disposable in set)
+            {
+                try { if (disposable != null) disposable.Dispose(); }
+                catch { }
+            }
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1099,13 +1330,12 @@ Query filters (order matters):
 
     public sealed class TestDataProvider : DataProviderBase<TestRecord>
     {
-        private readonly IDisposable db;
-        protected override IDisposable repository { get { return db; } }
+        protected override IEnumerable<IDisposable> disposables { get { return null; } }
+        protected override System.Data.Linq.DataContext repository { get { return null; } }
 
         public TestDataProvider()
         {
             // NOTE(jsd): In a real implementation, this would likely use a DataContext implementation, e.g. LINQ-to-SQL or -to-entities
-            db = null;
             var testData = new List<TestRecord>
             {
                 new TestRecord { ID = 1, Test1 = "test 1!", Test2 = Guid.NewGuid(), Test3 = 11, Test4 = long.MaxValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = true },
