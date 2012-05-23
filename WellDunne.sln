@@ -11,6 +11,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Framework", "Framework", "{
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WellDunne.WebTools", "WellDunne.WebTools\WellDunne.WebTools.csproj", "{330066FB-D466-4299-9A21-88622AE9BEBA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WellDunne.Expressions", "WellDunne.Expressions\WellDunne.Expressions.csproj", "{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -61,6 +63,16 @@ Global
 		{330066FB-D466-4299-9A21-88622AE9BEBA}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{330066FB-D466-4299-9A21-88622AE9BEBA}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{330066FB-D466-4299-9A21-88622AE9BEBA}.Release|x86.ActiveCfg = Release|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}.Release|x86.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -68,5 +80,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{59F1DB36-66D9-416B-A032-64E8722B77FD} = {50A05FA8-4687-4FEB-8975-FA03E773FBF5}
 		{08ADEEC4-9E9D-495F-9ACC-8ACD23B14438} = {50A05FA8-4687-4FEB-8975-FA03E773FBF5}
+		{5800CA71-FE1E-439C-A7D6-EDAE91FDE168} = {50A05FA8-4687-4FEB-8975-FA03E773FBF5}
 	EndGlobalSection
 EndGlobal
