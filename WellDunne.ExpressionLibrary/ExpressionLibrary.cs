@@ -530,19 +530,44 @@ namespace WellDunne.ExpressionLibrary
         }
     }
 
+    public sealed class ParserError
+    {
+        private readonly Token _token;
+        private readonly string _message;
+
+        public Token Token { get { return _token; } }
+        public string Message { get { return _message; } }
+
+        public ParserError(Token tok, string message)
+        {
+            _token = tok;
+            _message = message;
+        }
+    }
+
+    /// <summary>
+    /// Main entry point to the expression parser.
+    /// </summary>
     public sealed class Parser
     {
         private readonly Lexer _lexer;
         private IEnumerator<Token> _tokens;
         private bool _eof;
         private Token _lastToken;
+        private List<ParserError> _errors;
 
         public Parser(Lexer lexer)
         {
             _lexer = lexer;
             _tokens = _lexer.Lex().GetEnumerator();
+            _errors = new List<ParserError>();
         }
 
+        /// <summary>
+        /// Parses the expression lexed by the lexer and returns a boolean that indicates success or failure.
+        /// </summary>
+        /// <param name="result">Resulting expression instance that represents the parsed expression tree or null if failed</param>
+        /// <returns>true if succeeded in parsing, false otherwise</returns>
         public bool ParseExpression(out Expression result)
         {
             using (_tokens)
@@ -560,6 +585,15 @@ namespace WellDunne.ExpressionLibrary
                 }
                 return true;
             }
+        }
+
+        /// <summary>
+        /// Gets the collection of parser errors generated during the last ParseExpression.
+        /// </summary>
+        /// <returns></returns>
+        public List<ParserError> GetErrors()
+        {
+            return new List<ParserError>(_errors);
         }
 
         private bool parseExpression(out Expression e)
@@ -724,7 +758,8 @@ namespace WellDunne.ExpressionLibrary
 
         private bool Error(string error)
         {
-            Console.Error.WriteLine("error(at {0}): {1}", _lastToken.Position + 1, error);
+            _errors.Add(new ParserError(_lastToken, error));
+            //Console.Error.WriteLine("error(at {0}): {1}", _lastToken.Position + 1, error);
             return false;
         }
 

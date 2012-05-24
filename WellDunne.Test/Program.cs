@@ -104,7 +104,13 @@ namespace WellDunne
             Expression result;
             var parser = new Parser(new Lexer(new StringReader(input)));
             if (!parser.ParseExpression(out result))
+            {
+                foreach (var err in parser.GetErrors())
+                {
+                    Console.Error.WriteLine("error(at {0}): {1}", err.Token.Position + 1, err.Message);
+                }
                 goto passed;
+            }
 
             string output = result.ToString();
             Console.WriteLine("output:   \"{0}\"", output);
@@ -121,7 +127,13 @@ namespace WellDunne
             Expression result;
             var parser = new Parser(new Lexer(new StringReader(input)));
             if (!parser.ParseExpression(out result))
+            {
+                foreach (var err in parser.GetErrors())
+                {
+                    Console.Error.WriteLine("error(at {0}): {1}", err.Token.Position + 1, err.Message);
+                }
                 throw new Exception("Parser failed!");
+            }
 
             string output = result.ToString();
             Console.WriteLine("output:   \"{0}\"", output);
