@@ -9,6 +9,8 @@ namespace WellDunne.Expressions
     {
         private readonly Lexer _lexer;
         private IEnumerator<Token> _tokens;
+        private bool _eof;
+        private Token _lastToken;
 
         public Parser(Lexer lexer)
         {
@@ -23,7 +25,15 @@ namespace WellDunne.Expressions
                 result = null;
                 if (!AdvanceOrError("Expected expression")) return false;
 
-                return parseExpression(out result);
+                bool success = parseExpression(out result);
+                if (!success) return false;
+
+                if (!Eof())
+                {
+                    Error("Expected end of expression");
+                    return false;
+                }
+                return true;
             }
         }
 
@@ -86,7 +96,9 @@ namespace WellDunne.Expressions
                (tok.Value == "lt" ||
                 tok.Value == "le" ||
                 tok.Value == "gt" ||
-                tok.Value == "ge")
+                tok.Value == "ge" ||
+                tok.Value == "like" ||
+                tok.Value == "in")
             {
                 if (!AdvanceOrError(String.Format("Expected expression after '{0}'", tok.Value))) return false;
                 if (!parseUnaryExp(out e2)) return false;
@@ -135,11 +147,22 @@ namespace WellDunne.Expressions
             return true;
         }
 
-        private Token Current { get { return _tokens.Current; } }
-        private bool Advance() { return _tokens.MoveNext(); }
+        private Token Current { get { return _lastToken = _tokens.Current; } }
+        private Token LastToken { get { return _lastToken; } }
+
+        private bool Eof() { return _eof; }
+        private bool Advance()
+        {
+            if (_eof) return false;
+
+            bool havenext = _tokens.MoveNext();
+            if (!havenext) _eof = true;
+            return havenext;
+        }
+
         private bool AdvanceOrError(string error)
         {
-            bool havenext = _tokens.MoveNext();
+            bool havenext = Advance();
             if (!havenext) return Error(error);
             return havenext;
         }
@@ -147,25 +170,25 @@ namespace WellDunne.Expressions
         private bool check(TokenKind tokenKind)
         {
             if (Current.Kind != tokenKind)
-                return Error("Expected '{0}' but found '{1}'", tokenKind, Current.Kind);
+                return Error("Expected {0} but found {1}", Token.kindToString(tokenKind), Current);
             return true;
         }
 
         private bool Error(string error)
         {
-            Console.Error.WriteLine(error);
+            Console.Error.WriteLine("error(at {0}): {1}", _lastToken.Position + 1, error);
             return false;
         }
 
         private bool Error(string errorFormat, params object[] args)
         {
-            Console.Error.WriteLine(String.Format(errorFormat, args));
+            Error(String.Format(errorFormat, args));
             return false;
         }
 
         private void debug()
         {
-            var token = _tokens.Current;
+            var token = Current;
             Console.WriteLine("{0}, {1}, {2}", token.Kind, token.Position, token.Value);
         }
     }

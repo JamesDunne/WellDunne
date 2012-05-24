@@ -22,5 +22,7 @@ namespace WellDunne.Expressions
         Comma,
         ParenOpen,
         ParenClose,
+        BracketOpen,
+        BracketClose
     }
 }

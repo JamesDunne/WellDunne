@@ -44,9 +44,33 @@ namespace WellDunne.Expressions
                 case TokenKind.False: return "false";
                 case TokenKind.ParenOpen: return "(";
                 case TokenKind.ParenClose: return ")";
+                case TokenKind.BracketOpen: return "[";
+                case TokenKind.BracketClose: return "]";
                 case TokenKind.Comma: return ",";
                 case TokenKind.StringLiteral: return String.Concat("\'", escapeString(_value), "\'");
-                default: return base.ToString();
+                default: return String.Format("<unknown token {0}>", _value ?? _kind.ToString());
+            }
+        }
+
+        internal static string kindToString(TokenKind kind)
+        {
+            switch (kind)
+            {
+                case TokenKind.Invalid: return "<INVALID>";
+                case TokenKind.Identifier: return "identifier";
+                case TokenKind.Operator: return "operator";
+                case TokenKind.IntegerLiteral: return "integer";
+                case TokenKind.DecimalLiteral: return "decimal";
+                case TokenKind.Null: return "null";
+                case TokenKind.True: return "true";
+                case TokenKind.False: return "false";
+                case TokenKind.ParenOpen: return "(";
+                case TokenKind.ParenClose: return ")";
+                case TokenKind.BracketOpen: return "[";
+                case TokenKind.BracketClose: return "]";
+                case TokenKind.Comma: return ",";
+                case TokenKind.StringLiteral: return "string";
+                default: return String.Format("<unknown token kind {0}>", kind.ToString());
             }
         }
 

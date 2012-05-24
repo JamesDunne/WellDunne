@@ -27,9 +27,6 @@ namespace WellDunne.Expressions
         {
             while (!EndOfStream())
             {
-                // Record our current stream position:
-                long position = Position();
-
                 // Peek at the current character:
                 char c = Peek();
                 if (Char.IsWhiteSpace(c))
@@ -41,6 +38,9 @@ namespace WellDunne.Expressions
                         Read();
                     }
                 }
+
+                // Record our current stream position:
+                long position = Position();
 
                 if (c == '_' || Char.IsLetter(c))
                 {
@@ -138,17 +138,27 @@ namespace WellDunne.Expressions
                 else if (c == ',')
                 {
                     Read();
-                    yield return new Token(TokenKind.Comma, position);
+                    yield return new Token(TokenKind.Comma, position, c.ToString());
                 }
                 else if (c == '(')
                 {
                     Read();
-                    yield return new Token(TokenKind.ParenOpen, position);
+                    yield return new Token(TokenKind.ParenOpen, position, c.ToString());
                 }
                 else if (c == ')')
                 {
                     Read();
-                    yield return new Token(TokenKind.ParenClose, position);
+                    yield return new Token(TokenKind.ParenClose, position, c.ToString());
+                }
+                else if (c == '[')
+                {
+                    Read();
+                    yield return new Token(TokenKind.BracketOpen, position, c.ToString());
+                }
+                else if (c == ']')
+                {
+                    Read();
+                    yield return new Token(TokenKind.BracketClose, position, c.ToString());
                 }
                 else
                 {
