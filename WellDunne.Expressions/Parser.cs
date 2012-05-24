@@ -129,6 +129,29 @@ namespace WellDunne.Expressions
                 e = new DecimalExpression(Current);
             else if (Current.Kind == TokenKind.StringLiteral)
                 e = new StringExpression(Current);
+            else if (Current.Kind == TokenKind.BracketOpen)
+            {
+                e = null;
+                Token tok = Current;
+                if (!AdvanceOrError("Expected expression after '['")) return false;
+
+                List<Expression> elements = new List<Expression>();
+                while (Current.Kind != TokenKind.BracketClose & !Eof())
+                {
+                    Expression element;
+                    if (!parseExpression(out element)) return false;
+
+                    elements.Add(element);
+                    if (Current.Kind == TokenKind.BracketClose) break;
+
+                    // Expect a ',' after each expression:
+                    if (!check(TokenKind.Comma)) return false;
+                    if (!AdvanceOrError("Expected expression after ','")) return false;
+                }
+                if (!check(TokenKind.BracketClose)) return false;
+
+                e = new ListExpression(tok, elements);
+            }
             else if (Current.Kind == TokenKind.ParenOpen)
             {
                 e = null;

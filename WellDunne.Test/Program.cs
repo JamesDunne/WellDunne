@@ -14,10 +14,12 @@ namespace WellDunne
             try
             {
                 Fails(@"");
-
                 Fails(@"(");
-
                 Fails(@"(a");
+                Fails(@"a like");
+                Fails(@"a in");
+                Fails(@"a eq");
+                Fails(@"a ne");
 
                 Succeeds(@"(a)", @"a");
 
@@ -55,8 +57,7 @@ namespace WellDunne
 
             string output = result.ToString();
             Console.WriteLine("output:   \"{0}\"", output);
-            Console.WriteLine("failed");
-            return;
+            throw new Exception("Expected to fail but passed!");
         passed:
             Console.WriteLine("passed");
         }

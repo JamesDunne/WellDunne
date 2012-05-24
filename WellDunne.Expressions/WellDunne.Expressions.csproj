@@ -49,6 +49,7 @@
     <Compile Include="IdentifierExpression.cs" />
     <Compile Include="IntegerExpression.cs" />
     <Compile Include="Lexer.cs" />
+    <Compile Include="ListExpression.cs" />
     <Compile Include="NullExpression.cs" />
     <Compile Include="OrExpression.cs" />
     <Compile Include="Parser.cs" />
