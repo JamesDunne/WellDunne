@@ -11,7 +11,12 @@ namespace WellDunne
         static void Main(string[] args)
         {
             var parser = new Parser(new Lexer(new System.IO.StringReader(@"a or b")));
-            parser.Parse();
+            
+            Expression result;
+            if (!parser.ParseExpression(out result))
+            {
+                Console.WriteLine("Failed");
+            }
         }
     }
 }
