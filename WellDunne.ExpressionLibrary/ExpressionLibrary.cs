@@ -98,15 +98,15 @@ namespace WellDunne.ExpressionLibrary
                 case TokenKind.Operator: return "operator";
                 case TokenKind.IntegerLiteral: return "integer";
                 case TokenKind.DecimalLiteral: return "decimal";
-                case TokenKind.Null: return "null";
-                case TokenKind.True: return "true";
-                case TokenKind.False: return "false";
-                case TokenKind.ParenOpen: return "(";
-                case TokenKind.ParenClose: return ")";
-                case TokenKind.BracketOpen: return "[";
-                case TokenKind.BracketClose: return "]";
-                case TokenKind.Comma: return ",";
-                case TokenKind.StringLiteral: return "string";
+                case TokenKind.Null: return "'null'";
+                case TokenKind.True: return "'true'";
+                case TokenKind.False: return "'false'";
+                case TokenKind.ParenOpen: return "'('";
+                case TokenKind.ParenClose: return "')'";
+                case TokenKind.BracketOpen: return "'['";
+                case TokenKind.BracketClose: return "']'";
+                case TokenKind.Comma: return "','";
+                case TokenKind.StringLiteral: return "'string'";
                 default: return String.Format("<unknown token kind {0}>", kind.ToString());
             }
         }
@@ -792,7 +792,7 @@ namespace WellDunne.ExpressionLibrary
         private bool Check(TokenKind tokenKind)
         {
             if (Eof())
-                return Error("Unexpected end of expression");
+                return Error("Unexpected end of expression while looking for {0}", Token.kindToString(tokenKind));
             if (Current.Kind != tokenKind)
                 return Error("Expected {0} but found {1}", Token.kindToString(tokenKind), Current);
             return true;

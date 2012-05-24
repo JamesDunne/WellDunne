@@ -128,6 +128,9 @@ namespace WellDunne
                     @" f gt g",
                     @"(f gt g)"
                 );
+
+                Fails(@"b in [1,");
+                Fails(@"b in [1");
             }
             catch (Exception ex)
             {
