@@ -17,8 +17,48 @@ namespace WellDunne
                 Fails(@"a in");
                 Fails(@"a eq");
                 Fails(@"a ne");
+                Fails(@"a ne )");
+                Fails(@"1 like in true");
+                Fails(@"false false");
+                Fails(@"like");
+                Fails(@"in");
+                Fails(@"eq");
+                Fails(@"ne");
+                Fails(@"a (like) b");
+
+                Fails(@"10.0.3");
+                Succeeds(@"-10", @"-10");
+
+                Fails(@"10,03");
+
+                Fails(@"'abc''def'");
+                Fails(@"'abc'defghi""jkl""'");
+
+                Succeeds(@"'abc\'defghi""jkl""'", @"'abc\'defghi\""jkl\""'");
+
+                Succeeds(@"[-10,a,3.4,b,true,null]", @"[-10,a,3.4,b,true,null]");
 
                 Succeeds(@"(a)", @"a");
+                Succeeds(@"((a))", @"a");
+
+                Fails(@"((a)");
+                Fails(@"(a))");
+
+                // NOTE(jsd): No method invocation yet.
+                Fails(@"a()");
+
+                Succeeds(@"true", @"true");
+                Succeeds(@"false", @"false");
+                Succeeds(@"null", @"null");
+                Succeeds(@"@true", @"@true");
+                Succeeds(@"@false", @"@false");
+                Succeeds(@"@null", @"@null");
+                Succeeds(@" @true eq true", @"(@true eq true)");
+                Succeeds(@" @false eq false", @"(@false eq false)");
+                Succeeds(@" @null eq null", @"(@null eq null)");
+                Succeeds(@" @eq eq 10", @"(@eq eq 10)");
+                Succeeds(@" 2 like @in", @"(2 like @in)");
+                Succeeds(@" X in [@in,@null,@true,@false,@like]", @"(X in [@in,@null,@true,@false,@like])");
 
                 Succeeds(
                     @" a or ((b and c) or (d eq 'hello'))",
@@ -91,7 +131,7 @@ namespace WellDunne
             }
             catch (Exception ex)
             {
-                Console.WriteLine("failed:   " + ex.Message);
+                Console.WriteLine("unex-fail:" + ex.Message);
             }
         }
 

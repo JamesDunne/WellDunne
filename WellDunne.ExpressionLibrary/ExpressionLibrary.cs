@@ -33,16 +33,24 @@ namespace WellDunne.ExpressionLibrary
         private readonly TokenKind _kind;
         private readonly long _position;
         private readonly string _value;
+        private readonly bool _isReservedWord;
+
+        private static readonly HashSet<string> _reservedWords = new HashSet<string>(new string[] {
+            "null", "true", "false",
+            "eq", "ne", "lt", "gt", "le", "ge", "like", "in", "not", "and", "or"
+        });
 
         public TokenKind Kind { get { return _kind; } }
         public long Position { get { return _position; } }
         public string Value { get { return _value; } }
+        public bool IsReservedWord { get { return _isReservedWord; } }
 
         public Token(TokenKind kind, long position, string value)
         {
             _kind = kind;
             _position = position;
             _value = value;
+            _isReservedWord = (kind == TokenKind.Identifier && _reservedWords.Contains(value));
         }
 
         public Token(TokenKind kind, long position)
@@ -50,6 +58,7 @@ namespace WellDunne.ExpressionLibrary
             _kind = kind;
             _position = position;
             _value = null;
+            _isReservedWord = false;
         }
 
         public override string ToString()
@@ -57,7 +66,7 @@ namespace WellDunne.ExpressionLibrary
             switch (_kind)
             {
                 case TokenKind.Invalid: return "<INVALID>";
-                case TokenKind.Identifier: return _value;
+                case TokenKind.Identifier: return identifier();
                 case TokenKind.Operator: return _value;
                 case TokenKind.IntegerLiteral: return _value;
                 case TokenKind.DecimalLiteral: return _value;
@@ -72,6 +81,12 @@ namespace WellDunne.ExpressionLibrary
                 case TokenKind.StringLiteral: return String.Concat("\'", escapeString(_value), "\'");
                 default: return String.Format("<unknown token {0}>", _value ?? _kind.ToString());
             }
+        }
+
+        private string identifier()
+        {
+            if (_isReservedWord) return "@" + _value;
+            return _value;
         }
 
         internal static string kindToString(TokenKind kind)
@@ -149,10 +164,15 @@ namespace WellDunne.ExpressionLibrary
                 // Record our current stream position:
                 long position = Position();
 
-                if (c == '_' || Char.IsLetter(c))
+                if (c == '_' || c == '@' || Char.IsLetter(c))
                 {
                     // Start consuming an identifer:
                     var sb = new StringBuilder(8);
+
+                    // Starting an identifier with '@' allows identifiers to be reserved words.
+                    bool forceIdent = (c == '@');
+                    if (c == '@') Read();
+
                     sb.Append(Read());
                     while (!EndOfStream())
                     {
@@ -165,7 +185,9 @@ namespace WellDunne.ExpressionLibrary
 
                     // Now determine what kind of token this identifier is:
                     string ident = sb.ToString();
-                    if (ident == "null")
+                    if (forceIdent)
+                        yield return new Token(TokenKind.Identifier, position, ident);
+                    else if (ident == "null")
                         yield return new Token(TokenKind.Null, position, ident);
                     else if (ident == "true")
                         yield return new Token(TokenKind.True, position, ident);
@@ -176,23 +198,37 @@ namespace WellDunne.ExpressionLibrary
                     else
                         yield return new Token(TokenKind.Identifier, position, ident);
                 }
-                else if (Char.IsDigit(c))
+                else if (Char.IsDigit(c) || c == '-')
                 {
                     // Start consuming a numeric literal:
                     var sb = new StringBuilder(8);
+
                     bool isDecimal = false;
                     sb.Append(Read());
+
                     while (!EndOfStream())
                     {
                         char c2 = Peek();
-                        // HACK(jsd): Should create a new state to parse decimals properly.
-                        if (c2 == '.' || Char.IsDigit(c2))
+                        if (isDecimal)
                         {
-                            isDecimal = true;
-                            sb.Append(Read());
+                            if (Char.IsDigit(c2))
+                                sb.Append(Read());
+                            else
+                                break;
                         }
                         else
-                            break;
+                        {
+                            // HACK(jsd): Should create a new state to parse decimals properly.
+                            if (c2 == '.')
+                            {
+                                isDecimal = true;
+                                sb.Append(Read());
+                            }
+                            else if (Char.IsDigit(c2))
+                                sb.Append(Read());
+                            else
+                                break;
+                        }
                     }
 
                     if (isDecimal)
@@ -336,6 +372,7 @@ namespace WellDunne.ExpressionLibrary
 
         public override void WriteTo(TextWriter tw)
         {
+            if (_token.IsReservedWord) tw.Write('@');
             tw.Write(_token.Value);
         }
     }
@@ -555,6 +592,7 @@ namespace WellDunne.ExpressionLibrary
         private bool _eof;
         private Token _lastToken;
         private List<ParserError> _errors;
+        private int _position;
 
         public Parser(Lexer lexer)
         {
@@ -704,10 +742,10 @@ namespace WellDunne.ExpressionLibrary
                     if (Current.Kind == TokenKind.BracketClose) break;
 
                     // Expect a ',' after each expression:
-                    if (!check(TokenKind.Comma)) return false;
+                    if (!Check(TokenKind.Comma)) return false;
                     if (!AdvanceOrError("Expected expression after ','")) return false;
                 }
-                if (!check(TokenKind.BracketClose)) return false;
+                if (!Check(TokenKind.BracketClose)) return false;
 
                 e = new ListExpression(tok, elements);
             }
@@ -716,7 +754,7 @@ namespace WellDunne.ExpressionLibrary
                 e = null;
                 if (!AdvanceOrError("Expected expression after '('")) return false;
                 if (!parseExpression(out e)) return false;
-                if (!check(TokenKind.ParenClose)) return false;
+                if (!Check(TokenKind.ParenClose)) return false;
             }
             else
             {
@@ -731,6 +769,7 @@ namespace WellDunne.ExpressionLibrary
 
         private Token Current { get { return _lastToken = _tokens.Current; } }
         private Token LastToken { get { return _lastToken; } }
+        private int Position { get { return _position; } }
 
         private bool Eof() { return _eof; }
         private bool Advance()
@@ -739,6 +778,7 @@ namespace WellDunne.ExpressionLibrary
 
             bool havenext = _tokens.MoveNext();
             if (!havenext) _eof = true;
+            ++_position;
             return havenext;
         }
 
@@ -749,8 +789,10 @@ namespace WellDunne.ExpressionLibrary
             return havenext;
         }
 
-        private bool check(TokenKind tokenKind)
+        private bool Check(TokenKind tokenKind)
         {
+            if (Eof())
+                return Error("Unexpected end of expression");
             if (Current.Kind != tokenKind)
                 return Error("Expected {0} but found {1}", Token.kindToString(tokenKind), Current);
             return true;
@@ -759,7 +801,6 @@ namespace WellDunne.ExpressionLibrary
         private bool Error(string error)
         {
             _errors.Add(new ParserError(_lastToken, error));
-            //Console.Error.WriteLine("error(at {0}): {1}", _lastToken.Position + 1, error);
             return false;
         }
 
