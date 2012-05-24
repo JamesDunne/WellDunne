@@ -6,18 +6,18 @@ using System.IO;
 
 namespace WellDunne.Expressions
 {
-    public class IdentifierExpression : Expression
+    public sealed class NullExpression : Expression
     {
         private readonly Token _token;
 
-        public IdentifierExpression(Token token)
+        public NullExpression(Token tok)
         {
-            _token = token;
+            _token = tok;
         }
 
         public override void WriteTo(TextWriter tw)
         {
-            tw.Write(_token.Value);
+            tw.Write("null");
         }
     }
 }

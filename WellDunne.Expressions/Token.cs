@@ -5,6 +5,7 @@ using System.Text;
 
 namespace WellDunne.Expressions
 {
+    [System.Diagnostics.DebuggerDisplay("{Kind} - {Value}")]
     public struct Token
     {
         private readonly TokenKind _kind;

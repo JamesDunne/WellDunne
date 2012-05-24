@@ -6,13 +6,13 @@ using System.IO;
 
 namespace WellDunne.Expressions
 {
-    public class IdentifierExpression : Expression
+    public sealed class StringExpression : Expression
     {
         private readonly Token _token;
 
-        public IdentifierExpression(Token token)
+        public StringExpression(Token tok)
         {
-            _token = token;
+            this._token = tok;
         }
 
         public override void WriteTo(TextWriter tw)

@@ -23,20 +23,6 @@ namespace WellDunne.Expressions
             _charPosition = charPosition;
         }
 
-        private char Read()
-        {
-            ++_charPosition;
-            return (char)_reader.Read();
-        }
-
-        private char Peek() { return (char)_reader.Peek(); }
-        private long Position() { return _charPosition; }
-        private bool EndOfStream() { return _reader.Peek() == -1; }
-
-        private static readonly HashSet<string> operatorNames = new HashSet<string>(new string[] {
-            "eq", "ne", "lt", "gt", "le", "ge", "like", "in", "not", "and", "or"
-        });
-
         public IEnumerable<Token> Lex()
         {
             while (!EndOfStream())
@@ -150,16 +136,42 @@ namespace WellDunne.Expressions
                         yield return new Token(TokenKind.StringLiteral, position, sb.ToString());
                 }
                 else if (c == ',')
+                {
+                    Read();
                     yield return new Token(TokenKind.Comma, position);
+                }
                 else if (c == '(')
+                {
+                    Read();
                     yield return new Token(TokenKind.ParenOpen, position);
+                }
                 else if (c == ')')
+                {
+                    Read();
                     yield return new Token(TokenKind.ParenClose, position);
+                }
                 else
+                {
+                    Read();
                     yield return new Token(TokenKind.Invalid, position, String.Format("Unrecognized character '{0}' at position {1}", c, position + 1));
+                }
             }
 
             yield break;
         }
+
+        private char Read()
+        {
+            ++_charPosition;
+            return (char)_reader.Read();
+        }
+
+        private char Peek() { return (char)_reader.Peek(); }
+        private long Position() { return _charPosition; }
+        private bool EndOfStream() { return _reader.Peek() == -1; }
+
+        private static readonly HashSet<string> operatorNames = new HashSet<string>(new string[] {
+            "eq", "ne", "lt", "gt", "le", "ge", "like", "in", "not", "and", "or"
+        });
     }
 }

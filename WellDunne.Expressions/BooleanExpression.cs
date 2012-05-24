@@ -6,18 +6,20 @@ using System.IO;
 
 namespace WellDunne.Expressions
 {
-    public class IdentifierExpression : Expression
+    public sealed class BooleanExpression : Expression
     {
         private readonly Token _token;
+        private readonly bool _value;
 
-        public IdentifierExpression(Token token)
+        public BooleanExpression(Token tok, bool value)
         {
-            _token = token;
+            this._token = tok;
+            this._value = value;
         }
 
         public override void WriteTo(TextWriter tw)
         {
-            tw.Write(_token.Value);
+            tw.Write(_value ? "true" : "false");
         }
     }
 }
