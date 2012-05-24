@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using WellDunne.Expressions;
 using System.IO;
+using WellDunne.ExpressionLibrary;
 
 namespace WellDunne
 {
@@ -24,18 +21,72 @@ namespace WellDunne
                 Succeeds(@"(a)", @"a");
 
                 Succeeds(
-                    @"a or ((b and c) or (d eq 'hello'))",
+                    @" a or ((b and c) or (d eq 'hello'))",
                     @"(a or ((b and c) or (d eq 'hello')))"
                 );
 
                 Succeeds(
-                    @"DisplayName like 'ext%'",
+                    @" DisplayName like 'ext%'",
                     @"(DisplayName like 'ext%')"
                 );
 
                 Succeeds(
-                    @"_col1 in [1,2,3]",
+                    @" _col1 in [1,2,3]",
                     @"(_col1 in [1,2,3])"
+                );
+
+                Succeeds(
+                    @" __ in ['abc','def','ghi']",
+                    @"(__ in ['abc','def','ghi'])"
+                );
+
+                // One trailing comma at the end of a list is fine:
+                Succeeds(
+                    @" __ in ['abc',]",
+                    @"(__ in ['abc'])"
+                );
+
+                Succeeds(
+                    @" a in [1,2,3,]",
+                    @"(a in [1,2,3])"
+                );
+
+                // More than one trailing comma is bad:
+                Fails(@"__ in ['abc',,]");
+
+                Succeeds(
+                    @"  (a eq 'test') and (b ne 'word')  and (c in [1,4,5,16,17,18,20,22,])",
+                    @"(((a eq 'test') and (b ne 'word')) and (c in [1,4,5,16,17,18,20,22]))"
+                );
+
+                Succeeds(
+                    @" c eq 12",
+                    @"(c eq 12)"
+                );
+
+                Succeeds(
+                    @" d eq 12.0",
+                    @"(d eq 12.0)"
+                );
+
+                Succeeds(
+                    @" e eq true",
+                    @"(e eq true)"
+                );
+
+                Succeeds(
+                    @" e eq false",
+                    @"(e eq false)"
+                );
+
+                Succeeds(
+                    @" f ne null",
+                    @"(f ne null)"
+                );
+
+                Succeeds(
+                    @" f gt g",
+                    @"(f gt g)"
                 );
             }
             catch (Exception ex)

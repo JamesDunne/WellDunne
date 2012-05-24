@@ -45,9 +45,9 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\WellDunne.Expressions\WellDunne.Expressions.csproj">
+    <ProjectReference Include="..\WellDunne.Expressions\WellDunne.ExpressionLibrary.csproj">
       <Project>{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}</Project>
-      <Name>WellDunne.Expressions</Name>
+      <Name>WellDunne.ExpressionLibrary</Name>
     </ProjectReference>
     <ProjectReference Include="..\WellDunne\WellDunne.csproj">
       <Project>{08ADEEC4-9E9D-495F-9ACC-8ACD23B14438}</Project>

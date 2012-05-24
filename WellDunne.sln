@@ -11,7 +11,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Framework", "Framework", "{
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WellDunne.WebTools", "WellDunne.WebTools\WellDunne.WebTools.csproj", "{330066FB-D466-4299-9A21-88622AE9BEBA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WellDunne.Expressions", "WellDunne.Expressions\WellDunne.Expressions.csproj", "{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WellDunne.ExpressionLibrary", "WellDunne.Expressions\WellDunne.ExpressionLibrary.csproj", "{5800CA71-FE1E-439C-A7D6-EDAE91FDE168}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
