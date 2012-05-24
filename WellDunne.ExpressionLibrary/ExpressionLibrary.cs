@@ -768,11 +768,5 @@ namespace WellDunne.ExpressionLibrary
             Error(String.Format(errorFormat, args));
             return false;
         }
-
-        private void debug()
-        {
-            var token = Current;
-            Console.WriteLine("{0}, {1}, {2}", token.Kind, token.Position, token.Value);
-        }
     }
 }
