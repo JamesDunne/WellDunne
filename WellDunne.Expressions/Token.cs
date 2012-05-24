@@ -29,5 +29,41 @@ namespace WellDunne.Expressions
             _position = position;
             _value = null;
         }
+
+        public override string ToString()
+        {
+            switch (_kind)
+            {
+                case TokenKind.Invalid: return "<INVALID>";
+                case TokenKind.Identifier: return _value;
+                case TokenKind.Operator: return _value;
+                case TokenKind.IntegerLiteral: return _value;
+                case TokenKind.DecimalLiteral: return _value;
+                case TokenKind.Null: return "null";
+                case TokenKind.True: return "true";
+                case TokenKind.False: return "false";
+                case TokenKind.ParenOpen: return "(";
+                case TokenKind.ParenClose: return ")";
+                case TokenKind.Comma: return ",";
+                case TokenKind.StringLiteral: return String.Concat("\'", escapeString(_value), "\'");
+                default: return base.ToString();
+            }
+        }
+
+        internal static string escapeString(string value)
+        {
+            var sb = new StringBuilder(value.Length);
+            foreach (char ch in value)
+            {
+                if (ch == '\n') sb.Append("\\n");
+                else if (ch == '\r') sb.Append("\\r");
+                else if (ch == '\t') sb.Append("\\t");
+                else if (ch == '\\') sb.Append("\\\\");
+                else if (ch == '\'') sb.Append("\\\'");
+                else if (ch == '\"') sb.Append("\\\"");
+                else sb.Append(ch);
+            }
+            return sb.ToString();
+        }
     }
 }

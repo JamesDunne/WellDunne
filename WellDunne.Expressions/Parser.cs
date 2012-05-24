@@ -127,6 +127,7 @@ namespace WellDunne.Expressions
             else
             {
                 e = null;
+                Error("Unexpected token '{0}'", Current);
                 return false;
             }
 

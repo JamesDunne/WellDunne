@@ -17,7 +17,7 @@ namespace WellDunne.Expressions
 
         public override void WriteTo(TextWriter tw)
         {
-            tw.Write(_token.Value);
+            tw.Write(_token);
         }
     }
 }

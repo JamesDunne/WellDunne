@@ -10,8 +10,8 @@ namespace WellDunne
     {
         static void Main(string[] args)
         {
-            var parser = new Parser(new Lexer(new System.IO.StringReader(@"a or (b and c) or d eq 'hello'")));
-            
+            var parser = new Parser(new Lexer(new System.IO.StringReader(@"a or ((b and c) or (d eq 'hello'))")));
+
             Expression result;
             if (!parser.ParseExpression(out result))
             {
