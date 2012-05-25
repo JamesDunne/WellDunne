@@ -1161,36 +1161,99 @@ Query filters (order matters):
             return Expression.And(l, r);
         }
 
+        static bool typeIsLarger(Type lt, Type rt)
+        {
+            if (lt == typeof(long) && rt == typeof(int))
+                return true;
+            else if (lt == typeof(long) && rt == typeof(short))
+                return true;
+            else if (lt == typeof(long) && rt == typeof(sbyte))
+                return true;
+
+            else if (lt == typeof(ulong) && rt == typeof(uint))
+                return true;
+            else if (lt == typeof(ulong) && rt == typeof(ushort))
+                return true;
+            else if (lt == typeof(ulong) && rt == typeof(byte))
+                return true;
+
+            else if (lt == typeof(int) && rt == typeof(long))
+                return false;
+            else if (lt == typeof(int) && rt == typeof(short))
+                return true;
+            else if (lt == typeof(int) && rt == typeof(sbyte))
+                return true;
+
+            else if (lt == typeof(uint) && rt == typeof(ulong))
+                return false;
+            else if (lt == typeof(uint) && rt == typeof(ushort))
+                return true;
+            else if (lt == typeof(uint) && rt == typeof(byte))
+                return true;
+
+            else if (lt == typeof(short) && rt == typeof(long))
+                return false;
+            else if (lt == typeof(short) && rt == typeof(int))
+                return false;
+            else if (lt == typeof(short) && rt == typeof(sbyte))
+                return true;
+
+            else if (lt == typeof(ushort) && rt == typeof(ulong))
+                return false;
+            else if (lt == typeof(ushort) && rt == typeof(uint))
+                return false;
+            else if (lt == typeof(ushort) && rt == typeof(byte))
+                return true;
+
+            else if (lt == typeof(sbyte) && rt == typeof(long))
+                return false;
+            else if (lt == typeof(sbyte) && rt == typeof(int))
+                return false;
+            else if (lt == typeof(sbyte) && rt == typeof(short))
+                return true;
+
+            else if (lt == typeof(byte) && rt == typeof(ulong))
+                return false;
+            else if (lt == typeof(byte) && rt == typeof(uint))
+                return false;
+            else if (lt == typeof(byte) && rt == typeof(ushort))
+                return true;
+            else
+                return false;
+        }
+
         static void coerceTypes(ref Expression l, ref Expression r)
         {
             // Coerce expression types to a unified type for comparison:
             if (l.Type == r.Type) return;
-            
+
             // Do we need to lift either to a Nullable<T>?
             lift(ref l, ref r);
+            if (l.Type == r.Type) return;
 
-            try
-            {
+            // Compare types without concern for nullability:
+            Type lt = l.Type, rt = r.Type;
+            if (lt.IsGenericType && lt.GetGenericTypeDefinition() == typeof(Nullable<>))
+                lt = lt.GetGenericArguments()[0];
+            if (rt.IsGenericType && rt.GetGenericTypeDefinition() == typeof(Nullable<>))
+                rt = rt.GetGenericArguments()[0];
+
+            // Find the larger type:
+            if (typeIsLarger(lt, rt))
                 r = Expression.Convert(r, l.Type);
-            }
-            catch (InvalidOperationException)
+            else if (typeIsLarger(rt, lt))
+                l = Expression.Convert(l, r.Type);
+            else
             {
-                // No coercion operator defined between the types.
-                try
-                {
-                    l = Expression.Convert(l, r.Type);
-                }
-                catch (InvalidOperationException)
-                {
-                    // No coercion operator defined between the types.
-                    
-                    throw new Exception("I GIVE UP");
-                }
+                // Types are not directly convertible:
+
+                if (lt == typeof(Guid) && rt == typeof(string))
+                    r = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), r);
+                else if (rt == typeof(Guid) && lt == typeof(string))
+                    l = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), l);
+                else
+                    throw new JsonException(400, String.Format("No conversion available between `{0}` and `{1}`", l.Type, r.Type));
             }
-#if false
-            if (l.Type == typeof(Guid) && r.Type == typeof(string))
-                r = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), r);
-#endif
         }
 
         static Expression createEqual(string op, Expression l, Expression r)
@@ -2359,13 +2422,21 @@ namespace WellDunne.WebTools
 
     public sealed class TestRecord
     {
+        [JsonProperty(Order = 0)]
         public int ID { get; set; }
+        [JsonProperty(Order = 1)]
         public string Test1 { get; set; }
+        [JsonProperty(Order = 2)]
         public Guid Test2 { get; set; }
+        [JsonProperty(Order = 3)]
         public int Test3 { get; set; }
+        [JsonProperty(Order = 4)]
         public Int64 Test4 { get; set; }
+        [JsonProperty(Order = 5)]
         public DateTime Test5 { get; set; }
+        [JsonProperty(Order = 6)]
         public DateTimeOffset Test6 { get; set; }
+        [JsonProperty(Order = 7)]
         public bool Test7 { get; set; }
     }
 
