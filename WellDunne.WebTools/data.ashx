@@ -1151,27 +1151,46 @@ Query filters (order matters):
                 l = Expression.Convert(l, typeof(Nullable<>).MakeGenericType(l.Type));
         }
 
-        static void coerceTypes(ref Expression l, ref Expression r)
-        {
-            if (l.Type == r.Type) return;
-            lift(ref l, ref r);
-
-            // TODO(jsd): coerce types to be compatible for comparison
-
-            if (l.Type == typeof(Guid) && r.Type == typeof(string))
-                r = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), r);
-        }
-
         static Expression createOr(Expression l, Expression r)
         {
-            coerceTypes(ref l, ref r);
             return Expression.Or(l, r);
         }
 
         static Expression createAnd(Expression l, Expression r)
         {
-            coerceTypes(ref l, ref r);
             return Expression.And(l, r);
+        }
+
+        static void coerceTypes(ref Expression l, ref Expression r)
+        {
+            // Coerce expression types to a unified type for comparison:
+            if (l.Type == r.Type) return;
+            
+            // Do we need to lift either to a Nullable<T>?
+            lift(ref l, ref r);
+
+            try
+            {
+                r = Expression.Convert(r, l.Type);
+            }
+            catch (InvalidOperationException)
+            {
+                // No coercion operator defined between the types.
+                try
+                {
+                    l = Expression.Convert(l, r.Type);
+                }
+                catch (InvalidOperationException)
+                {
+                    // No coercion operator defined between the types.
+                    
+                    throw new Exception("I GIVE UP");
+                }
+            }
+#if false
+            if (l.Type == typeof(Guid) && r.Type == typeof(string))
+                r = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), r);
+#endif
         }
 
         static Expression createEqual(string op, Expression l, Expression r)
@@ -2344,7 +2363,7 @@ namespace WellDunne.WebTools
         public string Test1 { get; set; }
         public Guid Test2 { get; set; }
         public int Test3 { get; set; }
-        public long Test4 { get; set; }
+        public Int64 Test4 { get; set; }
         public DateTime Test5 { get; set; }
         public DateTimeOffset Test6 { get; set; }
         public bool Test7 { get; set; }
@@ -2360,9 +2379,9 @@ namespace WellDunne.WebTools
             // NOTE(jsd): In a real implementation, this would likely use a DataContext implementation, e.g. LINQ-to-SQL or -to-entities
             var testData = new List<TestRecord>
             {
-                new TestRecord { ID = 1, Test1 = "test 1!", Test2 = Guid.NewGuid(), Test3 = 11, Test4 = long.MaxValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = true },
-                new TestRecord { ID = 2, Test1 = "test 2!", Test2 = Guid.NewGuid(), Test3 = 22, Test4 = long.MinValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = false },
-                new TestRecord { ID = 3, Test1 = "test 3!", Test2 = Guid.Empty, Test3 = 33, Test4 = long.MinValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = false },
+                new TestRecord { ID = 1, Test1 = "test 1!", Test2 = Guid.NewGuid(), Test3 = 11, Test4 = Int64.MaxValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = true },
+                new TestRecord { ID = 2, Test1 = "test 2!", Test2 = Guid.NewGuid(), Test3 = 22, Test4 = Int64.MinValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = false },
+                new TestRecord { ID = 3, Test1 = "test 3!", Test2 = Guid.Empty, Test3 = 33, Test4 = Int64.MinValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = false },
             };
             var pendingData = new List<TestRecord>(testData);
 
