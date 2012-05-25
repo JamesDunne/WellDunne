@@ -1147,9 +1147,15 @@ Query filters (order matters):
         {
             // Lifts the non-nullable type to a nullable type:
             if (IsNullableType(l.Type) && !IsNullableType(r.Type))
-                r = Expression.Convert(r, typeof(Nullable<>).MakeGenericType(r.Type));
+            {
+                if (r.Type == typeof(object)) r = Expression.Constant(null, l.Type);
+                else r = Expression.Convert(r, typeof(Nullable<>).MakeGenericType(r.Type));
+            }
             else if (!IsNullableType(l.Type) && IsNullableType(r.Type))
-                l = Expression.Convert(l, typeof(Nullable<>).MakeGenericType(l.Type));
+            {
+                if (l.Type == typeof(object)) l = Expression.Constant(null, r.Type);
+                else l = Expression.Convert(l, typeof(Nullable<>).MakeGenericType(l.Type));
+            }
         }
 
         static Expression createOr(Expression l, Expression r)
@@ -1232,6 +1238,8 @@ Query filters (order matters):
                 e = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), e);
             else if (e.Type == typeof(string) && t == typeof(DateTime))
                 e = Expression.Call(typeof(DateTime), "Parse", Type.EmptyTypes, e);
+            else if (e.Type == typeof(string) && t == typeof(DateTimeOffset))
+                e = Expression.Call(typeof(DateTimeOffset), "Parse", Type.EmptyTypes, e);
             else
                 return false;
 
@@ -1637,7 +1645,7 @@ namespace WellDunne.WebTools.ExpressionLibrary
                     bool error = false;
 
                     // Start consuming a quoted string:
-                    var sb = new StringBuilder(32);
+                    var sb = new StringBuilder(24);
                     // Consume the opening quote char:
                     Read();
 
@@ -2468,20 +2476,68 @@ namespace WellDunne.WebTools
     {
         [JsonProperty(Order = 0)]
         public int ID { get; set; }
+
         [JsonProperty(Order = 1)]
-        public string Test1 { get; set; }
+        public string String { get; set; }
         [JsonProperty(Order = 2)]
-        public Guid Test2 { get; set; }
+        public Guid Guid { get; set; }
         [JsonProperty(Order = 3)]
-        public int Test3 { get; set; }
+        public DateTime DateTime { get; set; }
         [JsonProperty(Order = 4)]
-        public Int64 Test4 { get; set; }
+        public DateTimeOffset DateTimeOffset { get; set; }
         [JsonProperty(Order = 5)]
-        public DateTime Test5 { get; set; }
+        public bool Bool { get; set; }
+
         [JsonProperty(Order = 6)]
-        public DateTimeOffset Test6 { get; set; }
+        public Int64 Int64 { get; set; }
         [JsonProperty(Order = 7)]
-        public bool Test7 { get; set; }
+        public UInt64 UInt64 { get; set; }
+        [JsonProperty(Order = 8)]
+        public Int32 Int32 { get; set; }
+        [JsonProperty(Order = 9)]
+        public UInt32 UInt32 { get; set; }
+        [JsonProperty(Order = 10)]
+        public Int16 Int16 { get; set; }
+        [JsonProperty(Order = 11)]
+        public UInt16 UInt16 { get; set; }
+        [JsonProperty(Order = 12)]
+        public Char Char { get; set; }
+        [JsonProperty(Order = 13)]
+        public SByte SByte { get; set; }
+        [JsonProperty(Order = 14)]
+        public Byte Byte { get; set; }
+        [JsonProperty(Order = 15)]
+        public Decimal Decimal { get; set; }
+        [JsonProperty(Order = 16)]
+        public Double Double { get; set; }
+        [JsonProperty(Order = 17)]
+        public Single Single { get; set; }
+
+        [JsonProperty(Order = 18)]
+        public Int64? NInt64 { get; set; }
+        [JsonProperty(Order = 19)]
+        public UInt64? NUInt64 { get; set; }
+        [JsonProperty(Order = 20)]
+        public Int32? NInt32 { get; set; }
+        [JsonProperty(Order = 21)]
+        public UInt32? NUInt32 { get; set; }
+        [JsonProperty(Order = 22)]
+        public Int16? NInt16 { get; set; }
+        [JsonProperty(Order = 23)]
+        public UInt16? NUInt16 { get; set; }
+        [JsonProperty(Order = 24)]
+        public Char? NChar { get; set; }
+        [JsonProperty(Order = 25)]
+        public SByte? NSByte { get; set; }
+        [JsonProperty(Order = 26)]
+        public Byte? NByte { get; set; }
+        [JsonProperty(Order = 27)]
+        public Decimal? NDecimal { get; set; }
+        [JsonProperty(Order = 28)]
+        public Double? NDouble { get; set; }
+        [JsonProperty(Order = 29)]
+        public Single? NSingle { get; set; }
+
     }
 
     public sealed class TestDataProvider : DataProviderBase<TestRecord>
@@ -2492,12 +2548,66 @@ namespace WellDunne.WebTools
         public TestDataProvider()
         {
             // NOTE(jsd): In a real implementation, this would likely use a DataContext implementation, e.g. LINQ-to-SQL or -to-entities
-            var testData = new List<TestRecord>
+            var testData = new List<TestRecord>();
+            testData.Add(new TestRecord
             {
-                new TestRecord { ID = 1, Test1 = "test 1!", Test2 = Guid.NewGuid(), Test3 = 11, Test4 = Int64.MaxValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = true },
-                new TestRecord { ID = 2, Test1 = "test 2!", Test2 = Guid.NewGuid(), Test3 = 22, Test4 = Int64.MinValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = false },
-                new TestRecord { ID = 3, Test1 = "test 3!", Test2 = Guid.Empty, Test3 = 33, Test4 = Int64.MinValue, Test5 = DateTime.UtcNow, Test6 = DateTimeOffset.Now, Test7 = false },
-            };
+                ID = 1,
+                Bool = false,
+                Byte = Byte.MaxValue,
+                SByte = SByte.MinValue,
+                Char = Char.MaxValue,
+                Int16 = Int16.MinValue,
+                UInt16 = UInt16.MaxValue,
+                Int32 = Int32.MinValue,
+                UInt32 = UInt32.MaxValue,
+                Int64 = Int64.MinValue,
+                UInt64 = UInt64.MaxValue,
+                Decimal = Decimal.Zero,
+                Double = 0d,
+                Single = 0f,
+                Guid = Guid.NewGuid(),
+                DateTime = DateTime.Today,
+                DateTimeOffset = DateTimeOffset.UtcNow.Date,
+                String = "A"
+            });
+            for (int i = 1; i < 64; ++i)
+            {
+                TestRecord last = testData[i - 1];
+                testData.Add(new TestRecord
+                {
+                    ID = last.ID + 1,
+                    Bool = !last.Bool,
+                    Byte = (Byte)(last.Byte - 1),
+                    SByte = (SByte)(last.SByte + 1),
+                    Char = (Char)(last.Char - 1),
+                    Int16 = (Int16)(last.Int16 + 1),
+                    UInt16 = (UInt16)(last.UInt16 - 1),
+                    Int32 = (Int32)(last.Int32 + 1),
+                    UInt32 = (UInt32)(last.UInt32 - 1),
+                    Int64 = (Int64)(last.Int64 + 1),
+                    UInt64 = (UInt64)(last.UInt64 - 1),
+                    Decimal = last.Decimal + 1.05m,
+                    Double = last.Double + 1.05d,
+                    Single = last.Single + 1.05f,
+                    Guid = last.Guid,
+                    DateTime = last.DateTime.AddMinutes(15d),
+                    DateTimeOffset = last.DateTimeOffset.AddMinutes(15d),
+                    String = last.String + (char)('A' + i),
+
+                    NByte = last.NByte.HasValue ? (Byte?)null : last.Byte,
+                    NSByte = last.NSByte.HasValue ? (SByte?)null : last.SByte,
+                    NChar = last.NChar.HasValue ? (Char?)null : last.Char,
+                    NInt16 = last.NInt16.HasValue ? (Int16?)null : last.Int16,
+                    NUInt16 = last.NUInt16.HasValue ? (UInt16?)null : last.UInt16,
+                    NInt32 = last.NInt32.HasValue ? (Int32?)null : last.Int32,
+                    NUInt32 = last.NUInt32.HasValue ? (UInt32?)null : last.UInt32,
+                    NInt64 = last.NInt64.HasValue ? (Int64?)null : last.Int64,
+                    NUInt64 = last.NUInt64.HasValue ? (UInt64?)null : last.UInt64,
+                    NDecimal = last.NDecimal.HasValue ? (Decimal?)null : last.Decimal,
+                    NDouble = last.NDouble.HasValue ? (Double?)null : last.Double,
+                    NSingle = last.NSingle.HasValue ? (Single?)null : last.Single,
+                });
+            }
             var pendingData = new List<TestRecord>(testData);
 
             // This returns a basic IQueryable used for filtering.
