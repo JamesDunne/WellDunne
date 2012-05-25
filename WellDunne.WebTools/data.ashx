@@ -14,6 +14,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
@@ -1222,6 +1223,34 @@ Query filters (order matters):
                 return false;
         }
 
+        static bool doCustomConvert(ref Expression e, Type t)
+        {
+            // NOTE(jsd): Pay-as-you-go technical debt here.
+            // TODO(jsd): Handle nullable types too.
+
+            if (e.Type == typeof(string) && t == typeof(Guid))
+                e = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), e);
+            else if (e.Type == typeof(string) && t == typeof(DateTime))
+                e = Expression.Call(typeof(DateTime), "Parse", Type.EmptyTypes, e);
+            else
+                return false;
+
+            return true;
+        }
+
+        static Expression forceConversion(Expression e, Type t)
+        {
+            if (e.Type == t) return e;
+
+            if (typeIsLarger(e.Type, t))
+                return Expression.Convert(e, t);
+
+            if (!doCustomConvert(ref e, t))
+                throw new JsonException(400, String.Format("No conversion defined from `{0}` to `{1}`", e.Type, t));
+
+            return e;
+        }
+
         static void coerceTypes(ref Expression l, ref Expression r)
         {
             // Coerce expression types to a unified type for comparison:
@@ -1245,14 +1274,10 @@ Query filters (order matters):
                 l = Expression.Convert(l, r.Type);
             else
             {
-                // Types are not directly convertible:
-
-                if (lt == typeof(Guid) && rt == typeof(string))
-                    r = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), r);
-                else if (rt == typeof(Guid) && lt == typeof(string))
-                    l = Expression.New(typeof(Guid).GetConstructor(new Type[] { typeof(String) }), l);
-                else
-                    throw new JsonException(400, String.Format("No conversion available between `{0}` and `{1}`", l.Type, r.Type));
+                // Types are not directly convertible, employ a series of explicit checks for conversions we can do:
+                if (doCustomConvert(ref l, r.Type)) return;
+                else if (doCustomConvert(ref r, l.Type)) return;
+                else throw new JsonException(400, String.Format("No conversion available between `{0}` and `{1}`", l.Type, r.Type));
             }
         }
 
@@ -1269,6 +1294,24 @@ Query filters (order matters):
 
         static Expression createCompare(string op, Expression l, Expression r)
         {
+            if (op == "in")
+            {
+                // TODO(jsd): handle nullables
+                // `l` is a single value
+                // `r` is a list, aka NewArrayInit
+
+                // NOTE(jsd): The UnaryExpression is the Convert expression to `object`; we "undo" that conversion and instead convert directly to the comparand's type:
+                var list = ((NewArrayExpression)r).Expressions.SelectAsList(e => forceConversion(((UnaryExpression)e).Operand, l.Type));
+
+                return Expression.Call(
+                    typeof(Enumerable),
+                    "Contains",
+                    new Type[] { l.Type },
+                    Expression.NewArrayInit(l.Type, list),
+                    l
+                );
+            }
+
             coerceTypes(ref l, ref r);
             switch (op)
             {
@@ -1289,9 +1332,6 @@ Query filters (order matters):
                         l,
                         r
                     );
-                case "in":
-                    // TODO(jsd): lift to nullable?
-                    return Expression.Call(typeof(Enumerable), "Contains", new Type[] { l.Type, r.Type }, l, r);
 
                 default: throw new NotSupportedException();
             }
@@ -1328,8 +1368,12 @@ Query filters (order matters):
                     case ExpressionLibrary.Expression.Kind.Decimal:
                         return Expression.Constant(Decimal.Parse(((ExpressionLibrary.DecimalExpression)e).Decimal.Value));
                     case ExpressionLibrary.Expression.Kind.List:
-                        // TODO(jsd): Unify the array element types.
-                        return Expression.NewArrayInit(typeof(object), ((ExpressionLibrary.ListExpression)e).Elements.Select(el => el.Visit(visitor)));
+                        {
+                            // Create a NewArrayInit expression that initializes a new object[] to hold the values of the list:
+                            var elements = ((ExpressionLibrary.ListExpression)e).Elements.SelectAsList(el => (Expression)Expression.Convert(el.Visit(visitor), typeof(object)));
+                            Debug.Assert(elements.Count > 0);
+                            return Expression.NewArrayInit(typeof(object), elements);
+                        }
                     case ExpressionLibrary.Expression.Kind.BinOr:
                         binExp = (ExpressionLibrary.BinaryExpression)e;
                         return createOr(binExp.Left.Visit(visitor), binExp.Right.Visit(visitor));
