@@ -1250,13 +1250,18 @@ Query filters (order matters):
         {
             if (e.Type == t) return e;
 
-            if (typeIsLarger(e.Type, t))
+            // Do we need to lift either to a Nullable<T>?
+            if (!IsNullableType(e.Type) && IsNullableType(t))
+            {
+                if (e.Type == typeof(object)) e = Expression.Constant(null, t);
+                else e = Expression.Convert(e, typeof(Nullable<>).MakeGenericType(e.Type));
+            }
+            if (e.Type == t) return e;
+
+            if (doCustomConvert(ref e, t))
+                return e;
+            else
                 return Expression.Convert(e, t);
-
-            if (!doCustomConvert(ref e, t))
-                throw new JsonException(400, String.Format("No conversion defined from `{0}` to `{1}`", e.Type, t));
-
-            return e;
         }
 
         static void coerceTypes(ref Expression l, ref Expression r)
@@ -1280,6 +1285,19 @@ Query filters (order matters):
                 r = Expression.Convert(r, l.Type);
             else if (typeIsLarger(rt, lt))
                 l = Expression.Convert(l, r.Type);
+            // Handle unsigned<->signed conversions:
+            else if (lt == typeof(Byte) && rt == typeof(Int32))
+                r = Expression.Convert(r, l.Type);
+            else if (lt == typeof(UInt16) && rt == typeof(Int32))
+                r = Expression.Convert(r, l.Type);
+            else if (lt == typeof(UInt32) && rt == typeof(Int32))
+                r = Expression.Convert(r, l.Type);
+            else if (lt == typeof(Byte) && rt == typeof(Int64))
+                r = Expression.Convert(r, l.Type);
+            else if (lt == typeof(UInt16) && rt == typeof(Int64))
+                r = Expression.Convert(r, l.Type);
+            else if (lt == typeof(UInt32) && rt == typeof(Int64))
+                r = Expression.Convert(r, l.Type);
             else
             {
                 // Types are not directly convertible, employ a series of explicit checks for conversions we can do:
@@ -1358,6 +1376,7 @@ Query filters (order matters):
                 ExpressionLibrary.BinaryExpression binExp;
                 ExpressionLibrary.EqualExpression eqExp;
                 ExpressionLibrary.CompareExpression cmpExp;
+                ExpressionLibrary.IntegerExpression intExp;
 
                 switch (e.ExpressionKind)
                 {
@@ -1372,9 +1391,25 @@ Query filters (order matters):
                     case ExpressionLibrary.Expression.Kind.String:
                         return Expression.Constant(((ExpressionLibrary.StringExpression)e).String.Value);
                     case ExpressionLibrary.Expression.Kind.Integer:
-                        return Expression.Constant(Int64.Parse(((ExpressionLibrary.IntegerExpression)e).Integer.Value));
+                        intExp = (ExpressionLibrary.IntegerExpression)e;
+                        if (intExp.Bits == 32)
+                        {
+                            if (intExp.Signed)
+                                return Expression.Constant(Int32.Parse(intExp.Value));
+                            else
+                                return Expression.Constant(UInt32.Parse(intExp.Value));
+                        }
+                        else if (intExp.Bits == 64)
+                        {
+                            if (intExp.Signed)
+                                return Expression.Constant(Int64.Parse(intExp.Value));
+                            else
+                                return Expression.Constant(UInt64.Parse(intExp.Value));
+                        }
+                        else
+                            throw new NotSupportedException();
                     case ExpressionLibrary.Expression.Kind.Decimal:
-                        return Expression.Constant(Decimal.Parse(((ExpressionLibrary.DecimalExpression)e).Decimal.Value));
+                        return Expression.Constant(Decimal.Parse(((ExpressionLibrary.DecimalExpression)e).Value));
                     case ExpressionLibrary.Expression.Kind.List:
                         {
                             // Create a NewArrayInit expression that initializes a new object[] to hold the values of the list:
@@ -1630,6 +1665,22 @@ namespace WellDunne.WebTools.ExpressionLibrary
                             }
                             else if (Char.IsDigit(c2))
                                 sb.Append(Read());
+                            else if (c2 == 'U' || c2 == 'u')
+                            {
+                                sb.Append(Read());
+                                c2 = Peek();
+                                if (c2 == 'L' || c2 == 'l')
+                                    sb.Append(Read());
+                                break;
+                            }
+                            else if (c2 == 'L' || c2 == 'l')
+                            {
+                                sb.Append(Read());
+                                c2 = Peek();
+                                if (c2 == 'U' || c2 == 'u')
+                                    sb.Append(Read());
+                                break;
+                            }
                             else
                                 break;
                         }
@@ -1831,12 +1882,41 @@ namespace WellDunne.WebTools.ExpressionLibrary
     public sealed class IntegerExpression : Expression
     {
         private readonly Token _token;
-        public Token Integer { get { return _token; } }
+        private readonly int _bits;
+        private readonly bool _signed;
+        private readonly int _lastDigitPos;
+
+        public Token Token { get { return _token; } }
+
+        public string Value { get { return _token.Value.Substring(0, _lastDigitPos); } }
+        public int Bits { get { return _bits; } }
+        public bool Signed { get { return _signed; } }
 
         public IntegerExpression(Token tok)
             : base(Kind.Integer)
         {
             this._token = tok;
+
+            this._bits = 32;
+            this._signed = true;
+            this._lastDigitPos = tok.Value.Length;
+            if (tok.Value.EndsWith("ul", StringComparison.OrdinalIgnoreCase)
+             || tok.Value.EndsWith("lu", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastDigitPos = tok.Value.Length - 2;
+                _bits = 64;
+                _signed = false;
+            }
+            else if (tok.Value.EndsWith("u", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastDigitPos = tok.Value.Length - 1;
+                _signed = false;
+            }
+            else if (tok.Value.EndsWith("l", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastDigitPos = tok.Value.Length - 1;
+                _bits = 64;
+            }
         }
 
         public override void WriteTo(TextWriter tw)
@@ -1848,7 +1928,9 @@ namespace WellDunne.WebTools.ExpressionLibrary
     public sealed class DecimalExpression : Expression
     {
         private readonly Token _token;
-        public Token Decimal { get { return _token; } }
+        public Token Token { get { return _token; } }
+
+        public string Value { get { return _token.Value; } }
 
         public DecimalExpression(Token tok)
             : base(Kind.Decimal)
