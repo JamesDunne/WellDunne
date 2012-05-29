@@ -1326,6 +1326,7 @@ Query filters (order matters):
                 // `l` is a single value
                 // `r` is a list, aka NewArrayInit
 
+                // HACK(jsd): We assume that the `r` expression is always a list literal.
                 // NOTE(jsd): The UnaryExpression is the Convert expression to `object`; we "undo" that conversion and instead convert directly to the comparand's type:
                 var list = ((NewArrayExpression)r).Expressions.SelectAsList(e => forceConversion(((UnaryExpression)e).Operand, l.Type));
 
@@ -1412,6 +1413,7 @@ Query filters (order matters):
                         return Expression.Constant(Decimal.Parse(((ExpressionLibrary.DecimalExpression)e).Value));
                     case ExpressionLibrary.Expression.Kind.List:
                         {
+                            // NOTE(jsd): This is a hack just to create the expression tree and satisfy the type checker. Type conversions are done later for the `in` operator.
                             // Create a NewArrayInit expression that initializes a new object[] to hold the values of the list:
                             var elements = ((ExpressionLibrary.ListExpression)e).Elements.SelectAsList(el => (Expression)Expression.Convert(el.Visit(visitor), typeof(object)));
                             Debug.Assert(elements.Count > 0);

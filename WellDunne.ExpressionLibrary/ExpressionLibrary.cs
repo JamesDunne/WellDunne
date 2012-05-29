@@ -226,6 +226,22 @@ namespace WellDunne.ExpressionLibrary
                             }
                             else if (Char.IsDigit(c2))
                                 sb.Append(Read());
+                            else if (c2 == 'U' || c2 == 'u')
+                            {
+                                sb.Append(Read());
+                                c2 = Peek();
+                                if (c2 == 'L' || c2 == 'l')
+                                    sb.Append(Read());
+                                break;
+                            }
+                            else if (c2 == 'L' || c2 == 'l')
+                            {
+                                sb.Append(Read());
+                                c2 = Peek();
+                                if (c2 == 'U' || c2 == 'u')
+                                    sb.Append(Read());
+                                break;
+                            }
                             else
                                 break;
                         }
@@ -241,7 +257,7 @@ namespace WellDunne.ExpressionLibrary
                     bool error = false;
 
                     // Start consuming a quoted string:
-                    var sb = new StringBuilder(32);
+                    var sb = new StringBuilder(24);
                     // Consume the opening quote char:
                     Read();
 
@@ -338,6 +354,29 @@ namespace WellDunne.ExpressionLibrary
 
     public abstract class Expression
     {
+        public enum Kind
+        {
+            Identifier,
+            String,
+            Integer,
+            Decimal,
+            Null,
+            Boolean,
+            List,
+            BinCmp,
+            BinOr,
+            BinAnd,
+            BinEqual
+        }
+
+        private readonly Kind _kind;
+        public Kind ExpressionKind { get { return _kind; } }
+
+        protected Expression(Kind kind)
+        {
+            _kind = kind;
+        }
+
         /// <summary>
         /// Writes the expression to the given <see cref="TextWriter"/>.
         /// </summary>
@@ -359,13 +398,20 @@ namespace WellDunne.ExpressionLibrary
                 return tw.ToString();
             }
         }
+
+        public T Visit<T>(Func<Expression, T> visitor)
+        {
+            return visitor(this);
+        }
     }
 
     public class IdentifierExpression : Expression
     {
         private readonly Token _token;
+        public Token Identifier { get { return _token; } }
 
         public IdentifierExpression(Token token)
+            : base(Kind.Identifier)
         {
             _token = token;
         }
@@ -380,8 +426,10 @@ namespace WellDunne.ExpressionLibrary
     public sealed class StringExpression : Expression
     {
         private readonly Token _token;
+        public Token String { get { return _token; } }
 
         public StringExpression(Token tok)
+            : base(Kind.String)
         {
             this._token = tok;
         }
@@ -395,10 +443,41 @@ namespace WellDunne.ExpressionLibrary
     public sealed class IntegerExpression : Expression
     {
         private readonly Token _token;
+        private readonly int _bits;
+        private readonly bool _signed;
+        private readonly int _lastDigitPos;
+
+        public Token Token { get { return _token; } }
+
+        public string Value { get { return _token.Value.Substring(0, _lastDigitPos); } }
+        public int Bits { get { return _bits; } }
+        public bool Signed { get { return _signed; } }
 
         public IntegerExpression(Token tok)
+            : base(Kind.Integer)
         {
             this._token = tok;
+
+            this._bits = 32;
+            this._signed = true;
+            this._lastDigitPos = tok.Value.Length;
+            if (tok.Value.EndsWith("ul", StringComparison.OrdinalIgnoreCase)
+             || tok.Value.EndsWith("lu", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastDigitPos = tok.Value.Length - 2;
+                _bits = 64;
+                _signed = false;
+            }
+            else if (tok.Value.EndsWith("u", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastDigitPos = tok.Value.Length - 1;
+                _signed = false;
+            }
+            else if (tok.Value.EndsWith("l", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastDigitPos = tok.Value.Length - 1;
+                _bits = 64;
+            }
         }
 
         public override void WriteTo(TextWriter tw)
@@ -410,8 +489,12 @@ namespace WellDunne.ExpressionLibrary
     public sealed class DecimalExpression : Expression
     {
         private readonly Token _token;
+        public Token Token { get { return _token; } }
+
+        public string Value { get { return _token.Value; } }
 
         public DecimalExpression(Token tok)
+            : base(Kind.Decimal)
         {
             this._token = tok;
         }
@@ -427,6 +510,7 @@ namespace WellDunne.ExpressionLibrary
         private readonly Token _token;
 
         public NullExpression(Token tok)
+            : base(Kind.Null)
         {
             _token = tok;
         }
@@ -441,8 +525,10 @@ namespace WellDunne.ExpressionLibrary
     {
         private readonly Token _token;
         private readonly bool _value;
+        public bool Value { get { return _value; } }
 
         public BooleanExpression(Token tok, bool value)
+            : base(Kind.Boolean)
         {
             this._token = tok;
             this._value = value;
@@ -458,8 +544,10 @@ namespace WellDunne.ExpressionLibrary
     {
         private readonly Token _token;
         private readonly List<Expression> _elements;
+        public List<Expression> Elements { get { return _elements; } }
 
         public ListExpression(Token tok, List<Expression> elements)
+            : base(Kind.List)
         {
             _token = tok;
             _elements = elements;
@@ -485,7 +573,8 @@ namespace WellDunne.ExpressionLibrary
         public Expression Left { get { return _l; } }
         public Expression Right { get { return _r; } }
 
-        protected BinaryExpression(Expression l, Expression r)
+        protected BinaryExpression(Kind kind, Expression l, Expression r)
+            : base(kind)
         {
             _l = l;
             _r = r;
@@ -503,28 +592,12 @@ namespace WellDunne.ExpressionLibrary
         }
     }
 
-    public sealed class CompareExpression : BinaryExpression
-    {
-        private readonly Token _token;
-
-        public CompareExpression(Token tok, Expression l, Expression r)
-            : base(l, r)
-        {
-            _token = tok;
-        }
-
-        protected override void WriteInner(TextWriter tw)
-        {
-            tw.Write(" " + _token.Value + " ");
-        }
-    }
-
     public class OrExpression : BinaryExpression
     {
         private readonly Token _token;
 
         public OrExpression(Token tok, Expression l, Expression r)
-            : base(l, r)
+            : base(Kind.BinOr, l, r)
         {
             _token = tok;
         }
@@ -540,7 +613,7 @@ namespace WellDunne.ExpressionLibrary
         private readonly Token _token;
 
         public AndExpression(Token tok, Expression l, Expression r)
-            : base(l, r)
+            : base(Kind.BinAnd, l, r)
         {
             _token = tok;
         }
@@ -551,12 +624,30 @@ namespace WellDunne.ExpressionLibrary
         }
     }
 
+    public sealed class CompareExpression : BinaryExpression
+    {
+        private readonly Token _token;
+        public Token Token { get { return _token; } }
+
+        public CompareExpression(Token tok, Expression l, Expression r)
+            : base(Kind.BinCmp, l, r)
+        {
+            _token = tok;
+        }
+
+        protected override void WriteInner(TextWriter tw)
+        {
+            tw.Write(" " + _token.Value + " ");
+        }
+    }
+
     public sealed class EqualExpression : BinaryExpression
     {
         private readonly Token _token;
+        public Token Token { get { return _token; } }
 
         public EqualExpression(Token tok, Expression l, Expression r)
-            : base(l, r)
+            : base(Kind.BinEqual, l, r)
         {
             _token = tok;
         }
